@@ -1,0 +1,4078 @@
+<!DOCTYPE html>
+<!-- DRAGNET :: dragnet.html :: v1.2.0 -->
+<html lang="en" data-theme="night">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DRAGNET :: offline capture reader</title>
+<style>
+/* ---- tokens ------------------------------------------------------- */
+:root{
+  --bg:#0d1218; --panel:#151d26; --panel2:#1b2531; --rule:#27333f;
+  --ink:#cbd6e0; --ink-dim:#8593a1; --ink-faint:#5e6c78;
+  --brass:#c08a2e; --brass-dim:#8a6320;
+  --ok:#5fa86a; --warn:#cf9a3c; --alert:#c85248; --cool:#4f8fbf; --violet:#8e78c0;
+  --net:#c08a2e;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,"DejaVu Sans Mono",monospace;
+  --sans:ui-sans-serif,system-ui,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  --r:3px;
+  --pad:clamp(10px,1.6vw,18px);
+}
+html[data-theme="day"]{
+  --bg:#eae6dd; --panel:#f6f3ec; --panel2:#ece7dc; --rule:#c8c0b0;
+  --ink:#22262b; --ink-dim:#4d545c; --ink-faint:#6d747c;
+  --brass:#8a5f10; --brass-dim:#a98b45;
+  --ok:#2f6b39; --warn:#8a5f10; --alert:#992a24; --cool:#1f5b86; --violet:#5b4590;
+  --net:#8a5f10;
+}
+html[data-theme="contrast"]{
+  --bg:#000000; --panel:#0a0a0a; --panel2:#141414; --rule:#6a6a6a;
+  --ink:#ffffff; --ink-dim:#e2e2e2; --ink-faint:#bdbdbd;
+  --brass:#ffd400; --brass-dim:#ffd400;
+  --ok:#4ee06a; --warn:#ffd400; --alert:#ff6a5e; --cool:#5fc8ff; --violet:#cba6ff;
+  --net:#ffd400;
+}
+
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;height:100%}
+body{
+  background:var(--bg); color:var(--ink);
+  font-family:var(--mono); font-size:clamp(12px,0.86vw + 8px,14px);
+  line-height:1.45; display:flex; flex-direction:column;
+}
+button,select,input{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--brass); outline-offset:2px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+
+/* ---- masthead ----------------------------------------------------- */
+.mast{
+  display:flex; align-items:center; gap:var(--pad); flex-wrap:wrap;
+  padding:8px var(--pad); border-bottom:1px solid var(--rule); background:var(--panel);
+}
+.wordmark{display:flex;align-items:baseline;gap:10px}
+.wordmark b{
+  font-family:var(--sans); font-weight:800; font-size:1.5em;
+  letter-spacing:.34em; text-transform:uppercase; color:var(--brass);
+}
+.wordmark span{color:var(--ink-faint); letter-spacing:.12em; font-size:.8em}
+.spacer{flex:1 1 auto}
+.mast-actions{display:flex;gap:6px;flex-wrap:wrap}
+
+.btn{
+  background:var(--panel2); border:1px solid var(--rule); color:var(--ink);
+  padding:7px 11px; border-radius:var(--r); cursor:pointer;
+  letter-spacing:.09em; text-transform:uppercase; font-size:.78em; min-height:34px;
+}
+.btn:hover{border-color:var(--brass-dim); color:var(--brass)}
+.btn[aria-pressed="true"]{border-color:var(--brass); color:var(--brass)}
+.btn.primary{border-color:var(--brass); color:var(--brass)}
+label.btn{display:inline-flex;align-items:center}
+input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+select.btn{text-transform:none;letter-spacing:0}
+
+/* ---- intake ------------------------------------------------------- */
+.intake{
+  margin:var(--pad); border:1px dashed var(--rule); border-radius:var(--r);
+  padding:clamp(24px,6vw,64px) var(--pad); text-align:center; background:var(--panel);
+}
+.intake.hot{border-color:var(--brass); background:var(--panel2)}
+.intake h1{font-family:var(--sans);font-weight:700;letter-spacing:.2em;text-transform:uppercase;font-size:1.1em;margin:0 0 6px}
+.intake p{color:var(--ink-dim);margin:6px auto;max-width:56ch}
+.intake .fine{color:var(--ink-faint);font-size:.82em}
+
+/* ---- drag bar (signature) ----------------------------------------- */
+.dragbar{
+  padding:6px var(--pad) 10px; border-bottom:1px solid var(--rule); background:var(--panel);
+}
+.dragbar-head{
+  display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;
+  font-size:.76em;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-faint);
+}
+.dragbar-head b{color:var(--brass);letter-spacing:.14em}
+.strip{
+  position:relative; height:62px; margin-top:6px;
+  border:1px solid var(--rule); border-radius:var(--r);
+  background:var(--bg); touch-action:none; cursor:crosshair; overflow:hidden;
+}
+.strip canvas{display:block;width:100%;height:100%}
+.net{
+  position:absolute; top:0; bottom:0;
+  border-left:2px solid var(--net); border-right:2px solid var(--net);
+  background:color-mix(in srgb, var(--net) 12%, transparent);
+  cursor:grab;
+}
+.net:active{cursor:grabbing}
+.net .grip{
+  position:absolute; top:0; bottom:0; width:9px; cursor:ew-resize;
+  background:color-mix(in srgb, var(--net) 45%, transparent);
+}
+.net .grip.l{left:-2px} .net .grip.r{right:-2px}
+.netread{margin-top:5px;font-size:.78em;color:var(--ink-dim);display:flex;gap:16px;flex-wrap:wrap}
+
+/* ---- follow stream ------------------------------------------------ */
+.stream-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+.stream-bar select{min-height:34px}
+pre.stream{margin:0;padding:12px;background:var(--panel2);border:1px solid var(--rule);border-radius:4px;
+  font:12px/1.5 var(--mono);color:var(--ink);white-space:pre-wrap;word-break:break-all;
+  max-height:60vh;overflow:auto}
+pre.stream .gap{display:block;color:var(--warn);font-style:italic}
+.msg{border-left:3px solid var(--rule);padding:6px 0 6px 10px;margin:0 0 8px}
+.msg.req{border-left-color:var(--brass)}
+.msg.res{border-left-color:var(--ok)}
+.msg.tls{border-left-color:var(--ink-faint)}
+.msg .h{font:13px/1.4 var(--mono);color:var(--ink);word-break:break-all}
+.msg .m{font-size:12px;color:var(--ink-dim);margin-top:2px}
+.msg .warnflag{color:var(--warn)}
+
+/* ---- stations ----------------------------------------------------- */
+.rail{
+  display:flex; gap:2px; padding:0 var(--pad); background:var(--panel);
+  border-bottom:1px solid var(--rule); overflow-x:auto;
+}
+.tab{
+  background:none;border:none;border-bottom:2px solid transparent; color:var(--ink-dim);
+  padding:10px 14px; cursor:pointer; letter-spacing:.16em; text-transform:uppercase;
+  font-size:.78em; white-space:nowrap; min-height:40px;
+}
+.tab:hover{color:var(--ink)}
+.tab[aria-selected="true"]{color:var(--brass);border-bottom-color:var(--brass)}
+
+main{flex:1 1 auto; overflow:auto; padding:var(--pad)}
+.station[hidden]{display:none}
+.grid{display:grid;gap:var(--pad);grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr))}
+.card{background:var(--panel);border:1px solid var(--rule);border-radius:var(--r);padding:12px 14px}
+.card h2, .card h3{
+  font-family:var(--sans); font-size:.78em; font-weight:700;
+  letter-spacing:.18em; text-transform:uppercase; color:var(--ink-faint);
+  margin:0 0 10px; border-bottom:1px solid var(--rule); padding-bottom:6px;
+}
+.stat{display:flex;justify-content:space-between;gap:12px;padding:3px 0}
+.stat span:last-child{color:var(--brass)}
+
+table{width:100%;border-collapse:collapse;font-size:.9em}
+th{
+  text-align:left; font-weight:600; color:var(--ink-faint); font-size:.82em;
+  letter-spacing:.12em; text-transform:uppercase; border-bottom:1px solid var(--rule);
+  padding:6px 8px; position:sticky; top:0; background:var(--panel); cursor:pointer;
+}
+th:hover{color:var(--brass)}
+td{padding:5px 8px;border-bottom:1px solid color-mix(in srgb,var(--rule) 55%,transparent);white-space:nowrap}
+tbody tr{cursor:pointer}
+tbody tr:hover{background:var(--panel2)}
+tbody tr[aria-selected="true"]{background:var(--panel2);box-shadow:inset 3px 0 0 var(--brass)}
+.num{text-align:right;font-variant-numeric:tabular-nums}
+.wrap{max-height:60vh;overflow:auto;border:1px solid var(--rule);border-radius:var(--r);background:var(--panel)}
+
+.chip{
+  display:inline-block;padding:1px 7px;border-radius:10px;font-size:.78em;
+  border:1px solid currentColor;letter-spacing:.06em;
+}
+.c-tcp{color:var(--cool)} .c-udp{color:var(--ok)} .c-icmp{color:var(--violet)}
+.c-arp{color:var(--warn)} .c-other{color:var(--ink-faint)}
+
+/* protocol tree */
+.tree{list-style:none;margin:0;padding:0}
+.tree ul{list-style:none;margin:0;padding-left:18px;border-left:1px solid var(--rule)}
+.tree li{padding:3px 0}
+.bar{height:8px;background:var(--panel2);border-radius:2px;overflow:hidden;margin-top:3px}
+.bar i{display:block;height:100%;background:var(--brass)}
+.tline{display:flex;justify-content:space-between;gap:10px}
+.tline b{font-weight:600}
+.tline em{font-style:normal;color:var(--ink-dim);font-variant-numeric:tabular-nums}
+
+/* ladder */
+.ladder{position:relative;padding:0}
+.ladder-head{display:grid;grid-template-columns:90px 1fr 90px;gap:8px;align-items:center;
+  color:var(--ink-faint);font-size:.8em;letter-spacing:.1em;text-transform:uppercase;
+  border-bottom:1px solid var(--rule);padding-bottom:6px;margin-bottom:8px}
+.ladder-head .r{text-align:right}
+.rung{display:grid;grid-template-columns:90px 1fr 90px;gap:8px;align-items:center;padding:2px 0}
+.rung:hover{background:var(--panel2)}
+.rung .t{color:var(--ink-faint);font-variant-numeric:tabular-nums;text-align:right;font-size:.85em}
+.rung .b{color:var(--ink-faint);font-variant-numeric:tabular-nums;font-size:.85em}
+.arrow{position:relative;height:22px;display:flex;align-items:center}
+.arrow .line{position:absolute;left:0;right:0;height:1px;background:var(--rule)}
+.arrow .lbl{
+  position:relative;margin:0 auto;background:var(--panel);padding:0 8px;
+  font-size:.85em;white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis;
+}
+.arrow.fwd .line{background:linear-gradient(90deg,var(--cool),var(--cool));}
+.arrow.rev .line{background:linear-gradient(90deg,var(--ok),var(--ok));}
+.arrow .head{position:absolute;width:0;height:0;border-top:4px solid transparent;border-bottom:4px solid transparent}
+.arrow.fwd .head{right:0;border-left:7px solid var(--cool)}
+.arrow.rev .head{left:0;border-right:7px solid var(--ok)}
+.arrow.flag-rst .lbl{color:var(--alert)}
+.arrow.flag-syn .lbl{color:var(--brass)}
+
+/* findings */
+.finding{border-left:3px solid var(--rule);padding:8px 12px;margin-bottom:10px;background:var(--panel)}
+.finding.sev-note{border-left-color:var(--ink-faint)}
+.finding.sev-watch{border-left-color:var(--warn)}
+.finding.sev-flag{border-left-color:var(--alert)}
+.finding.sev-good{border-left-color:var(--ok)}
+.finding h4{margin:0 0 4px;font-family:var(--sans);font-size:.9em;letter-spacing:.04em}
+.finding p{margin:0;color:var(--ink-dim)}
+.finding .tagline{font-size:.74em;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-faint);margin-bottom:2px}
+.brief{
+  background:var(--panel);border:1px solid var(--rule);border-left:3px solid var(--brass);
+  border-radius:var(--r);padding:14px 16px;margin-bottom:var(--pad);
+}
+.brief p{margin:0 0 8px}
+.brief p:last-child{margin-bottom:0}
+
+/* dialog */
+dialog{
+  background:var(--panel);color:var(--ink);border:1px solid var(--rule);border-radius:var(--r);
+  max-width:min(680px,92vw);padding:0;
+}
+dialog::backdrop{background:rgba(0,0,0,.65)}
+.dlg-head{display:flex;align-items:center;gap:12px;padding:10px 14px;border-bottom:1px solid var(--rule)}
+.dlg-head h2{margin:0;font-family:var(--sans);font-size:.85em;letter-spacing:.2em;text-transform:uppercase;color:var(--brass);border:none;padding:0}
+.dlg-body{padding:14px;max-height:66vh;overflow:auto}
+.dlg-body h3{font-family:var(--sans);font-size:.78em;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-faint);margin:14px 0 6px;border:none;padding:0}
+.dlg-body ul{margin:0;padding-left:18px;color:var(--ink-dim)}
+.dlg-body a{color:var(--brass)}
+.log{font-size:.85em;white-space:pre-wrap;background:var(--bg);border:1px solid var(--rule);border-radius:var(--r);padding:8px;max-height:40vh;overflow:auto;color:var(--ink-dim)}
+.pass{color:var(--ok)} .fail{color:var(--alert)}
+
+.empty{color:var(--ink-faint);padding:24px;text-align:center}
+.notice{
+  padding:8px 12px;border:1px solid var(--warn);border-left-width:3px;border-radius:var(--r);
+  color:var(--warn);margin-bottom:var(--pad);font-size:.9em;
+}
+footer{
+  padding:6px var(--pad);border-top:1px solid var(--rule);background:var(--panel);
+  color:var(--ink-faint);font-size:.76em;display:flex;gap:16px;flex-wrap:wrap;
+}
+</style>
+</head>
+<body>
+
+<header class="mast">
+  <div class="wordmark"><b>Dragnet</b><span id="verline">FI-123 &middot; v1.2.0</span></div>
+  <div class="spacer"></div>
+  <div class="mast-actions">
+    <label class="btn primary" for="fileIn">Open capture</label>
+    <input type="file" id="fileIn" accept=".pcap,.pcapng,.cap,.dmp,.gz" multiple>
+    <button class="btn" id="btnDemo">Load sample</button>
+    <select class="btn" id="themeSel" aria-label="Theme">
+      <option value="night">Night</option>
+      <option value="day">Day</option>
+      <option value="contrast">High contrast</option>
+    </select>
+    <button class="btn" id="btnExport">Export</button>
+    <button class="btn" id="btnTest">Self test</button>
+    <button class="btn" id="btnAbout">About</button>
+  </div>
+</header>
+
+<section class="intake" id="intake">
+  <h1>Drop a capture on this panel</h1>
+  <p>DRAGNET reads libpcap and pcapng files entirely inside this page. Nothing is uploaded, and the file never leaves the machine.</p>
+  <p class="fine">.pcap &middot; .pcapng &middot; .cap &middot; gzip of any of those</p>
+</section>
+
+<section class="dragbar" id="dragbar" hidden>
+  <div class="dragbar-head">
+    <b>The drag bar</b>
+    <span id="capName">no capture</span>
+    <span id="capSpan"></span>
+    <span class="spacer"></span>
+    <button class="btn" id="btnCast" style="padding:3px 8px;min-height:26px">Cast the whole net</button>
+  </div>
+  <div class="strip" id="strip">
+    <canvas id="stripCanvas"></canvas>
+    <div class="net" id="net"><div class="grip l"></div><div class="grip r"></div></div>
+  </div>
+  <div class="netread">
+    <span>Net: <b id="netRange">whole capture</b></span>
+    <span>In the net: <b id="netCount">0</b> packets</span>
+    <span id="netBytes"></span>
+  </div>
+</section>
+
+<nav class="rail" id="rail" hidden role="tablist">
+  <button class="tab" role="tab" id="tab-catch" data-st="catch" aria-selected="true">Catch</button>
+  <button class="tab" role="tab" id="tab-breakdown" data-st="breakdown" aria-selected="false">Breakdown</button>
+  <button class="tab" role="tab" id="tab-ladder" data-st="ladder" aria-selected="false">Ladder</button>
+  <button class="tab" role="tab" id="tab-findings" data-st="findings" aria-selected="false">Findings</button>
+  <button class="tab" role="tab" id="tab-packets" data-st="packets" aria-selected="false">Packets</button>
+</nav>
+
+<main id="main" hidden>
+  <div id="warnBox"></div>
+
+  <section class="station" id="st-catch" role="tabpanel" aria-labelledby="tab-catch">
+    <div class="grid" style="margin-bottom:var(--pad)">
+      <div class="card"><h2>Catch summary</h2><div id="catchStats"></div></div>
+      <div class="card"><h2>Busiest hosts</h2><div id="topHosts"></div></div>
+    </div>
+    <div class="wrap"><table id="convTable"><thead></thead><tbody></tbody></table></div>
+    <p class="fine" style="color:var(--ink-faint);margin-top:8px">Pick a conversation to open it on the ladder.</p>
+  </section>
+
+  <section class="station" id="st-breakdown" role="tabpanel" aria-labelledby="tab-breakdown" hidden>
+    <div class="grid">
+      <div class="card"><h2>Protocol hierarchy</h2><ul class="tree" id="protoTree"></ul></div>
+      <div class="card"><h2>By service port</h2><div id="portTable"></div></div>
+      <div class="card"><h2>Packet size profile</h2><div id="sizeProfile"></div></div>
+    </div>
+    <div class="card" id="airCard" hidden>
+      <h2>The air</h2>
+      <div class="wrap"><table id="apTable"><thead></thead><tbody></tbody></table></div>
+      <div id="airExtra"></div>
+    </div>
+  </section>
+
+  <section class="station" id="st-ladder" role="tabpanel" aria-labelledby="tab-ladder" hidden>
+    <div class="card">
+      <h2 id="ladderTitle">Timing ladder</h2>
+      <div class="ladder-head"><div class="r">Offset</div><div style="text-align:center" id="ladderEnds"></div><div>Bytes</div></div>
+      <div class="ladder" id="ladder"></div>
+    </div>
+    <div class="card" id="streamCard" hidden>
+      <h2>Follow stream</h2>
+      <div class="stream-bar">
+        <label class="fine" for="streamDir">Direction</label>
+        <select id="streamDir"></select>
+        <label class="fine" for="streamView">View</label>
+        <select id="streamView">
+          <option value="text">Text</option>
+          <option value="hex">Hex</option>
+        </select>
+        <span class="spacer"></span>
+        <span class="fine" id="streamStat"></span>
+        <button class="btn" id="streamSave" type="button">Save stream</button>
+      </div>
+      <p class="fine" style="color:var(--ink-dim);margin:0 0 10px">
+        These are payload bytes, rebuilt in order. The export dialog never includes them. Saving a stream here writes
+        them to a file on purpose, one direction at a time.
+      </p>
+      <div id="streamMsgs"></div>
+      <pre class="stream" id="streamBody"></pre>
+    </div>
+  </section>
+
+  <section class="station" id="st-findings" role="tabpanel" aria-labelledby="tab-findings" hidden>
+    <div class="brief" id="brief"></div>
+    <div id="findings"></div>
+  </section>
+
+  <section class="station" id="st-packets" role="tabpanel" aria-labelledby="tab-packets" hidden>
+    <div class="wrap"><table id="pktTable"><thead></thead><tbody></tbody></table></div>
+    <p class="fine" style="color:var(--ink-faint);margin-top:8px">Showing the first 3000 packets in the net.</p>
+  </section>
+</main>
+
+<footer>
+  <span>DRAGNET v1.2.0</span>
+  <span>GPL-3.0</span>
+  <span>Runs from disk. Nothing leaves this machine.</span>
+  <span class="spacer"></span>
+  <label style="display:flex;gap:6px;align-items:center;cursor:pointer">
+    <input type="checkbox" id="dbgToggle"> Debug log
+  </label>
+  <span id="dbgCount"></span>
+</footer>
+
+<dialog id="dlgAbout">
+  <div class="dlg-head"><h2>About Dragnet</h2><span class="spacer" style="flex:1"></span><button class="btn" data-close>Close</button></div>
+  <div class="dlg-body">
+    <p><b>DRAGNET</b> &middot; Field Instrument FI-123 &middot; version <b>1.2.0</b></p>
+    <p>An offline reader for packet captures. Open a file, drag the net along the capture, and read what the traffic was doing.</p>
+    <p>Since v1.1 it rebuilds TCP streams and IP fragments rather than reading one segment at a time, and since v1.2 it reads radiotap and 802.11, which is what lets it read a capture taken off the air.</p>
+    <h3>License</h3>
+    <p>GPL-3.0</p>
+    <h3>Vendored libraries</h3>
+    <p>None. Every parser and every pixel in this file is hand written. No build step, no network calls, no external assets.</p>
+    <h3>Privacy</h3>
+    <ul>
+      <li>The capture is read with the browser File API and stays in page memory.</li>
+      <li>Exports are produced locally and saved by the browser download path.</li>
+      <li>Payload bytes are never written into the JSON, report or CSV exports, only summaries and headers.</li>
+      <li>The Follow stream panel is the one exception, and only when you press its own save button: that file is payload by definition.</li>
+    </ul>
+    <h3>Known limitations</h3>
+    <ul>
+      <li>Encrypted payloads are described, not decrypted. TLS reporting stops at the handshake, and 802.11 encrypted data frames are counted, not opened. There is no WEP or WPA decryption here and no key log support yet.</li>
+      <li>Rebuilt streams are held whole in memory and stop at four megabytes per direction. Past that the counts stay right and the byte view is short.</li>
+      <li>Stream decoding covers HTTP and the shape of TLS. Other application protocols are read one packet at a time.</li>
+      <li>802.11 control frames carry fewer addresses than data frames, so some of them name only the receiver.</li>
+      <li>Reading 802.11 needs a capture taken in monitor mode. A capture from an ordinary associated interface has already been turned into Ethernet frames by the driver.</li>
+      <li>Link types beyond Ethernet, raw IP, Linux SLL, SLL2, BSD loopback, radiotap, Prism and AVS are counted but not dissected.</li>
+      <li>Very large captures are capped by available browser memory. Above roughly 200 MB, cut the file first.</li>
+    </ul>
+    <h3>Feedback</h3>
+    <p>Send notes and captures that break it to the Field Instruments feedback channel at <a href="https://greenshoegarage.com" target="_blank" rel="noopener">greenshoegarage.com</a>.</p>
+  </div>
+</dialog>
+
+<dialog id="dlgTest">
+  <div class="dlg-head"><h2>Self test</h2><span style="flex:1"></span><button class="btn" data-close>Close</button></div>
+  <div class="dlg-body"><div class="log" id="testLog"></div></div>
+</dialog>
+
+<dialog id="dlgDebug">
+  <div class="dlg-head"><h2>Debug log</h2><span style="flex:1"></span><button class="btn" id="dbgClear">Clear</button><button class="btn" data-close>Close</button></div>
+  <div class="dlg-body"><div class="log" id="debugLog"></div></div>
+</dialog>
+
+<dialog id="dlgExport">
+  <div class="dlg-head"><h2>Export</h2><span style="flex:1"></span><button class="btn" data-close>Close</button></div>
+  <div class="dlg-body">
+    <p>Exports cover the packets currently inside the net. Payload bytes are never included.</p>
+    <p>
+      <button class="btn" id="expJson">Session JSON</button>
+      <button class="btn" id="expTxt">Written report</button>
+      <button class="btn" id="expCsv">Conversations CSV</button>
+    </p>
+  </div>
+</dialog>
+
+<script>
+/* ====================================================================
+   DRAGNET v1.2.0  ::  core (pure, DOM free)
+   ==================================================================== */
+(function (global) {
+'use strict';
+
+var DN = {};
+DN.VERSION = '1.2.0';
+
+/* ---- small helpers ------------------------------------------------ */
+function hex2(n){ return (n<16?'0':'') + n.toString(16); }
+DN.mac = function (b, o) {
+  return hex2(b[o])+':'+hex2(b[o+1])+':'+hex2(b[o+2])+':'+hex2(b[o+3])+':'+hex2(b[o+4])+':'+hex2(b[o+5]);
+};
+DN.ip4 = function (b, o) { return b[o]+'.'+b[o+1]+'.'+b[o+2]+'.'+b[o+3]; };
+DN.ip6 = function (b, o) {
+  var parts = [], i;
+  for (i = 0; i < 8; i++) parts.push(((b[o+i*2]<<8)|b[o+i*2+1]).toString(16));
+  /* collapse the longest run of zeroes */
+  var best = -1, bestLen = 0, run = -1, runLen = 0;
+  for (i = 0; i < 8; i++) {
+    if (parts[i] === '0') { if (run < 0) { run = i; runLen = 1; } else runLen++;
+      if (runLen > bestLen) { best = run; bestLen = runLen; }
+    } else { run = -1; runLen = 0; }
+  }
+  if (bestLen > 1) {
+    var head = parts.slice(0, best).join(':');
+    var tail = parts.slice(best + bestLen).join(':');
+    return head + '::' + tail;
+  }
+  return parts.join(':');
+};
+DN.bytesHuman = function (n) {
+  if (n == null) return '';
+  var u = ['B','KB','MB','GB','TB'], i = 0, v = n;
+  while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; }
+  return (i === 0 ? v : v.toFixed(v < 10 ? 2 : 1)) + ' ' + u[i];
+};
+DN.secs = function (s) {
+  if (s == null || !isFinite(s)) return '';
+  if (s < 1e-3) return (s*1e6).toFixed(0) + ' us';
+  if (s < 1) return (s*1e3).toFixed(2) + ' ms';
+  if (s < 90) return s.toFixed(3) + ' s';
+  var m = Math.floor(s/60), r = s - m*60;
+  if (m < 60) return m + 'm ' + r.toFixed(0) + 's';
+  var h = Math.floor(m/60);
+  return h + 'h ' + (m - h*60) + 'm';
+};
+DN.stamp = function (ms) {
+  var d = new Date(ms);
+  function p(n, w) { var s = String(n); while (s.length < (w||2)) s = '0' + s; return s; }
+  return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+' '+
+         p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds())+'.'+p(d.getMilliseconds(),3);
+};
+
+/* ---- link type names ---------------------------------------------- */
+DN.LINKTYPES = {
+  0:'BSD loopback', 1:'Ethernet', 6:'IEEE 802.5', 9:'PPP', 101:'Raw IP',
+  105:'IEEE 802.11', 113:'Linux cooked (SLL)', 119:'802.11 with Prism header',
+  127:'802.11 radiotap', 163:'802.11 with AVS header',
+  228:'Raw IPv4', 229:'Raw IPv6', 276:'Linux cooked v2 (SLL2)'
+};
+
+/* ====================================================================
+   FILE READERS
+   ==================================================================== */
+
+/* classic libpcap ---------------------------------------------------- */
+DN.readPcap = function (buf, opts) {
+  opts = opts || {};
+  var dv = new DataView(buf), u8 = new Uint8Array(buf);
+  var magic = dv.getUint32(0, false), le, nano;
+  if (magic === 0xa1b2c3d4) { le = false; nano = false; }
+  else if (magic === 0xd4c3b2a1) { le = true; nano = false; }
+  else if (magic === 0xa1b23c4d) { le = false; nano = true; }
+  else if (magic === 0x4d3cb2a1) { le = true; nano = true; }
+  else throw new Error('Not a libpcap file');
+
+  var out = {
+    format: 'libpcap', endian: le ? 'little' : 'big', tsUnit: nano ? 'ns' : 'us',
+    versionMajor: dv.getUint16(4, le), versionMinor: dv.getUint16(6, le),
+    snaplen: dv.getUint32(16, le), linktype: dv.getUint32(20, le) & 0xffff,
+    packets: [], warnings: [], truncated: false
+  };
+  var max = opts.maxPackets || 400000;
+  var p = 24, n = 0;
+  while (p + 16 <= u8.length) {
+    var tsSec = dv.getUint32(p, le);
+    var tsSub = dv.getUint32(p + 4, le);
+    var cap = dv.getUint32(p + 8, le);
+    var orig = dv.getUint32(p + 12, le);
+    p += 16;
+    if (cap > u8.length - p) {
+      out.warnings.push('Record ' + n + ' claims ' + cap + ' bytes but only ' + (u8.length - p) + ' remain. Capture looks cut short.');
+      cap = u8.length - p;
+      out.truncated = true;
+    }
+    out.packets.push({
+      i: n,
+      ts: tsSec * 1000 + (nano ? tsSub / 1e6 : tsSub / 1e3),
+      caplen: cap, origlen: orig,
+      bytes: u8.subarray(p, p + cap),
+      linktype: out.linktype
+    });
+    p += cap; n++;
+    if (n >= max) { out.warnings.push('Stopped after ' + max + ' packets to protect browser memory.'); out.truncated = true; break; }
+  }
+  return out;
+};
+
+/* pcapng -------------------------------------------------------------- */
+DN.readPcapng = function (buf, opts) {
+  opts = opts || {};
+  var dv = new DataView(buf), u8 = new Uint8Array(buf);
+  if (dv.getUint32(0, false) !== 0x0a0d0d0a) throw new Error('Not a pcapng file');
+  var out = {
+    format: 'pcapng', endian: null, tsUnit: 'variable', snaplen: 0,
+    linktype: null, packets: [], warnings: [], truncated: false, interfaces: []
+  };
+  var max = opts.maxPackets || 400000;
+  var p = 0, le = true, n = 0, sections = 0;
+
+  function readOpts(start, end) {
+    var o = {};
+    var q = start;
+    while (q + 4 <= end) {
+      var code = dv.getUint16(q, le), len = dv.getUint16(q + 2, le);
+      q += 4;
+      if (code === 0) break;
+      if (q + len > end) break;
+      o[code] = u8.subarray(q, q + len);
+      q += len + ((4 - (len % 4)) % 4);
+    }
+    return o;
+  }
+
+  while (p + 12 <= u8.length) {
+    var typeBE = dv.getUint32(p, false);
+    if (typeBE === 0x0a0d0d0a) {
+      /* section header: byte order magic tells us the endianness */
+      var bom = dv.getUint32(p + 8, false);
+      le = (bom !== 0x1a2b3c4d);
+      sections++;
+      if (sections > 1) out.warnings.push('File holds more than one section. All sections are read into one timeline.');
+    }
+    var blockType = dv.getUint32(p, le);
+    var blockLen = dv.getUint32(p + 4, le);
+    if (blockLen < 12 || p + blockLen > u8.length) {
+      out.warnings.push('Block at offset ' + p + ' has an impossible length. Stopping there.');
+      out.truncated = true;
+      break;
+    }
+    var body = p + 8, bodyEnd = p + blockLen - 4;
+
+    if (blockType === 0x00000001) { /* interface description */
+      var lt = dv.getUint16(body, le);
+      var snap = dv.getUint32(body + 4, le);
+      var o = readOpts(body + 8, bodyEnd);
+      var tsres = 6, tsdiv = 1e6;
+      if (o[9] && o[9].length) {
+        var raw = o[9][0];
+        if (raw & 0x80) { tsdiv = Math.pow(2, raw & 0x7f); tsres = raw & 0x7f; }
+        else { tsdiv = Math.pow(10, raw); tsres = raw; }
+      }
+      var name = o[2] ? DN.ascii(o[2]) : ('if' + out.interfaces.length);
+      out.interfaces.push({ linktype: lt, snaplen: snap, tsdiv: tsdiv, tsres: tsres, name: name });
+      if (out.linktype === null) out.linktype = lt;
+      if (snap > out.snaplen) out.snaplen = snap;
+    } else if (blockType === 0x00000006) { /* enhanced packet */
+      var ifid = dv.getUint32(body, le);
+      var hi = dv.getUint32(body + 4, le), lo = dv.getUint32(body + 8, le);
+      var cap2 = dv.getUint32(body + 12, le), orig2 = dv.getUint32(body + 16, le);
+      var iface = out.interfaces[ifid] || { linktype: out.linktype || 1, tsdiv: 1e6, name: 'if' + ifid };
+      var ticks = hi * 4294967296 + lo;
+      var ts = ticks / iface.tsdiv * 1000;
+      var dstart = body + 20;
+      if (cap2 > bodyEnd - dstart) { cap2 = Math.max(0, bodyEnd - dstart); out.truncated = true; }
+      out.packets.push({
+        i: n, ts: ts, caplen: cap2, origlen: orig2,
+        bytes: u8.subarray(dstart, dstart + cap2),
+        linktype: iface.linktype, iface: iface.name
+      });
+      n++;
+    } else if (blockType === 0x00000003) { /* simple packet */
+      var orig3 = dv.getUint32(body, le);
+      var iface3 = out.interfaces[0] || { linktype: out.linktype || 1, name: 'if0' };
+      var cap3 = Math.min(orig3, bodyEnd - (body + 4));
+      out.packets.push({
+        i: n, ts: 0, caplen: cap3, origlen: orig3,
+        bytes: u8.subarray(body + 4, body + 4 + cap3),
+        linktype: iface3.linktype, iface: iface3.name, noTime: true
+      });
+      n++;
+    }
+    p += blockLen;
+    if (n >= max) { out.warnings.push('Stopped after ' + max + ' packets to protect browser memory.'); out.truncated = true; break; }
+  }
+  if (out.linktype === null) out.linktype = 1;
+  return out;
+};
+
+DN.ascii = function (b) {
+  var s = '';
+  for (var i = 0; i < b.length; i++) { var c = b[i]; s += (c >= 32 && c < 127) ? String.fromCharCode(c) : ''; }
+  return s;
+};
+
+/* front door ---------------------------------------------------------- */
+DN.readCapture = function (buf, opts) {
+  if (buf.byteLength < 24) throw new Error('File is too small to be a capture.');
+  var dv = new DataView(buf);
+  var m = dv.getUint32(0, false);
+  if (m === 0x0a0d0d0a) return DN.readPcapng(buf, opts);
+  if (m === 0xa1b2c3d4 || m === 0xd4c3b2a1 || m === 0xa1b23c4d || m === 0x4d3cb2a1) return DN.readPcap(buf, opts);
+  if ((m >>> 16) === 0x1f8b) throw new Error('This file is gzipped. Dragnet will unzip it for you if the browser supports it.');
+  throw new Error('Unrecognised file. Dragnet reads libpcap and pcapng captures.');
+};
+
+/* ====================================================================
+   DISSECTOR
+   ==================================================================== */
+
+DN.IPPROTO = { 1:'ICMP', 2:'IGMP', 6:'TCP', 17:'UDP', 47:'GRE', 50:'ESP', 51:'AH', 58:'ICMPv6', 89:'OSPF', 132:'SCTP' };
+
+DN.WELL_KNOWN = {
+  20:'FTP-DATA', 21:'FTP', 22:'SSH', 23:'TELNET', 25:'SMTP', 53:'DNS', 67:'DHCP', 68:'DHCP',
+  69:'TFTP', 80:'HTTP', 88:'Kerberos', 110:'POP3', 111:'RPC', 119:'NNTP', 123:'NTP',
+  135:'MSRPC', 137:'NBNS', 138:'NBDG', 139:'NBSS', 143:'IMAP', 161:'SNMP', 162:'SNMP-TRAP',
+  179:'BGP', 389:'LDAP', 443:'HTTPS', 445:'SMB', 465:'SMTPS', 500:'ISAKMP', 514:'SYSLOG',
+  515:'LPD', 520:'RIP', 543:'KLOGIN', 587:'SMTP-SUB', 593:'RPC-HTTP', 631:'IPP', 636:'LDAPS',
+  873:'RSYNC', 989:'FTPS-DATA', 990:'FTPS', 993:'IMAPS', 995:'POP3S', 1080:'SOCKS',
+  1433:'MSSQL', 1521:'ORACLE', 1701:'L2TP', 1723:'PPTP', 1812:'RADIUS', 1883:'MQTT',
+  1900:'SSDP', 2049:'NFS', 3128:'HTTP-PROXY', 3268:'LDAP-GC', 3306:'MYSQL', 3389:'RDP',
+  4500:'IPSEC-NAT', 5060:'SIP', 5061:'SIPS', 5222:'XMPP', 5353:'MDNS', 5432:'POSTGRES',
+  5555:'ADB', 5601:'KIBANA', 5900:'VNC', 6379:'REDIS', 6667:'IRC', 8000:'HTTP-ALT',
+  8080:'HTTP-ALT', 8443:'HTTPS-ALT', 8883:'MQTTS', 9000:'HTTP-ALT', 9200:'ELASTIC',
+  11211:'MEMCACHED', 27017:'MONGODB'
+};
+
+DN.CLEARTEXT_PORTS = { 21:'FTP', 23:'Telnet', 25:'SMTP', 80:'HTTP', 110:'POP3', 143:'IMAP', 161:'SNMP', 389:'LDAP', 512:'rexec', 513:'rlogin', 514:'rsh', 1433:'MSSQL', 3306:'MySQL', 5432:'Postgres', 6379:'Redis', 11211:'Memcached' };
+
+DN.serviceName = function (a, b) {
+  var lo = Math.min(a, b), hi = Math.max(a, b);
+  if (DN.WELL_KNOWN[lo]) return DN.WELL_KNOWN[lo];
+  if (DN.WELL_KNOWN[hi]) return DN.WELL_KNOWN[hi];
+  return null;
+};
+
+/* ====================================================================
+   RADIOTAP AND 802.11
+   The air side. This is what makes a capture from PICKET's sensor head
+   readable here.
+   ==================================================================== */
+
+DN.RT_FIELDS = [
+  /* bit, byte length, alignment */
+  [0, 8, 8], [1, 1, 1], [2, 1, 1], [3, 4, 2], [4, 2, 2], [5, 1, 1], [6, 1, 1],
+  [7, 2, 2], [8, 2, 2], [9, 2, 2], [10, 1, 1], [11, 1, 1], [12, 1, 1], [13, 1, 1],
+  [14, 2, 2], [15, 2, 2], [16, 2, 2], [17, 1, 1], [18, 8, 8], [19, 3, 1],
+  [20, 8, 4], [21, 12, 2], [22, 12, 2]
+];
+
+DN.parseRadiotap = function (b, o) {
+  if (b.length < o + 8) return null;
+  var len = b[o + 2] | (b[o + 3] << 8);
+  if (len < 8 || o + len > b.length) return null;
+  var rt = { len: len, version: b[o] };
+
+  /* the present bitmap can repeat while the top bit is set */
+  var words = [], p = o + 4, guard = 0;
+  while (p + 4 <= o + len && guard++ < 16) {
+    var w = (b[p] | (b[p + 1] << 8) | (b[p + 2] << 16) | (b[p + 3] << 24)) >>> 0;
+    words.push(w);
+    p += 4;
+    if (!(w & 0x80000000)) break;
+  }
+  if (!words.length) return rt;
+
+  var present = words[0];
+  var at = p;
+  function align(n) { var m = at % n; if (m) at += (n - m); }
+
+  for (var i = 0; i < DN.RT_FIELDS.length; i++) {
+    var bit = DN.RT_FIELDS[i][0], size = DN.RT_FIELDS[i][1], al = DN.RT_FIELDS[i][2];
+    if (!(present & (1 << bit))) continue;
+    align(al);
+    if (at + size > o + len) break;
+    if (bit === 1) { rt.flags = b[at]; rt.badFcs = !!(b[at] & 0x40); rt.hasFcs = !!(b[at] & 0x10); }
+    else if (bit === 2) { rt.rate = b[at] / 2; }
+    else if (bit === 3) {
+      rt.freq = b[at] | (b[at + 1] << 8);
+      rt.chanFlags = b[at + 2] | (b[at + 3] << 8);
+      rt.channel = DN.freqToChannel(rt.freq);
+      rt.band = rt.freq >= 5000 ? '5 GHz' : (rt.freq >= 2400 ? '2.4 GHz' : null);
+    }
+    else if (bit === 5) { rt.signal = (b[at] << 24) >> 24; }
+    else if (bit === 6) { rt.noise = (b[at] << 24) >> 24; }
+    else if (bit === 11) { rt.antenna = b[at]; }
+    at += size;
+  }
+  return rt;
+};
+
+DN.freqToChannel = function (f) {
+  if (!f) return null;
+  if (f === 2484) return 14;
+  if (f >= 2412 && f <= 2472) return (f - 2407) / 5;
+  if (f >= 5160 && f <= 5885) return (f - 5000) / 5;
+  if (f >= 5955 && f <= 7115) return (f - 5950) / 5;   /* 6 GHz */
+  return null;
+};
+
+var W_TYPE = ['management', 'control', 'data', 'extension'];
+var W_MGMT = { 0: 'association request', 1: 'association response', 2: 'reassociation request',
+  3: 'reassociation response', 4: 'probe request', 5: 'probe response', 8: 'beacon',
+  9: 'ATIM', 10: 'disassociation', 11: 'authentication', 12: 'deauthentication', 13: 'action' };
+var W_CTRL = { 4: 'beamforming report poll', 5: 'VHT NDP announcement', 7: 'control wrapper',
+  8: 'block ack request', 9: 'block ack', 10: 'PS-poll', 11: 'RTS', 12: 'CTS', 13: 'ACK',
+  14: 'CF-end', 15: 'CF-end + CF-ack' };
+var W_DATA = { 0: 'data', 1: 'data + CF-ack', 2: 'data + CF-poll', 4: 'null', 5: 'CF-ack',
+  8: 'QoS data', 9: 'QoS data + CF-ack', 10: 'QoS data + CF-poll', 12: 'QoS null' };
+DN.W_MGMT = W_MGMT;
+
+/* reason and status codes worth naming in plain language */
+var W_REASON = { 1: 'unspecified', 2: 'previous authentication no longer valid',
+  3: 'the station is leaving', 4: 'inactivity', 5: 'the access point is out of room',
+  6: 'class 2 frame from a station that never authenticated',
+  7: 'class 3 frame from a station that never associated', 8: 'the station is leaving the network',
+  9: 'association without authentication first', 15: 'four way handshake timed out',
+  16: 'group key handshake timed out', 23: '802.1X authentication failed' };
+
+function macAt(b, o) { return DN.mac(b, o); }
+
+DN.dissect80211 = function (b, o, r) {
+  r.stack.push('wlan');
+  if (b.length < o + 10) { r.proto = '802.11'; r.info = 'runt 802.11 frame'; return -1; }
+  var fc0 = b[o], fc1 = b[o + 1];
+  var type = (fc0 >> 2) & 3, sub = (fc0 >> 4) & 15;
+  var toDS = !!(fc1 & 1), fromDS = !!(fc1 & 2), moreFrag = !!(fc1 & 4);
+  var retry = !!(fc1 & 8), protectedF = !!(fc1 & 0x40), order = !!(fc1 & 0x80);
+
+  var w = { type: W_TYPE[type], typeCode: type, subtype: sub, toDS: toDS, fromDS: fromDS,
+            retry: retry, protected: protectedF, moreFrag: moreFrag };
+  r.wifi = w;
+  r.transport = '802.11';
+
+  /* control frames carry fewer addresses, so the header length varies */
+  if (type === 1) {
+    w.name = W_CTRL[sub] || ('control subtype ' + sub);
+    r.proto = '802.11 ' + w.name;
+    w.receiver = macAt(b, o + 4);
+    if (sub === 11 || sub === 8 || sub === 9 || sub === 10 || sub === 14 || sub === 15) {
+      if (b.length >= o + 16) w.transmitter = macAt(b, o + 10);
+    }
+    r.src = w.transmitter || null;
+    r.dst = w.receiver;
+    r.info = w.name + (w.transmitter ? ' from ' + w.transmitter : '') + ' to ' + w.receiver;
+    if (!r.src) { r.src = w.receiver; r.dst = w.receiver; }
+    return -1;
+  }
+
+  if (b.length < o + 24) { r.proto = '802.11'; r.info = 'truncated 802.11 header'; return -1; }
+  var a1 = macAt(b, o + 4), a2 = macAt(b, o + 10), a3 = macAt(b, o + 16);
+  w.seq = ((b[o + 22] | (b[o + 23] << 8)) >> 4);
+  w.fragNum = (b[o + 22] & 0x0f);
+  var hlen = 24;
+
+  if (!toDS && !fromDS) { w.dst = a1; w.src = a2; w.bssid = a3; }
+  else if (!toDS && fromDS) { w.dst = a1; w.bssid = a2; w.src = a3; }
+  else if (toDS && !fromDS) { w.bssid = a1; w.src = a2; w.dst = a3; }
+  else {
+    w.receiver = a1; w.transmitter = a2; w.dst = a3;
+    if (b.length >= o + 30) w.src = macAt(b, o + 24);
+    hlen = 30;
+    w.wds = true;
+  }
+  r.src = w.src || a2; r.dst = w.dst || a1;
+
+  if (type === 2 && (sub & 8)) { w.qos = true; if (b.length >= o + hlen + 2) { w.tid = b[o + hlen] & 0x0f; } hlen += 2; }
+  if (order && type === 2 && (sub & 8)) hlen += 4;
+
+  if (type === 0) {
+    w.name = W_MGMT[sub] || ('management subtype ' + sub);
+    r.proto = '802.11 ' + w.name;
+    dissectMgmt(b, o + hlen, r, w, sub);
+    return -1;
+  }
+
+  if (type === 2) {
+    w.name = W_DATA[sub] || ('data subtype ' + sub);
+    r.proto = '802.11 ' + w.name;
+    if (sub === 4 || sub === 12) {
+      r.info = w.name + ', no payload' + (w.bssid ? ', bssid ' + w.bssid : '');
+      return -1;
+    }
+    if (protectedF) {
+      r.proto = '802.11 encrypted data';
+      w.encrypted = true;
+      r.info = 'encrypted payload' + (w.bssid ? ' on ' + w.bssid : '') + ', contents not readable';
+      return -1;
+    }
+    /* LLC/SNAP, then we are back in familiar territory */
+    var p = o + hlen;
+    if (b.length >= p + 8 && b[p] === 0xaa && b[p + 1] === 0xaa && b[p + 2] === 3) {
+      var et = (b[p + 6] << 8) | b[p + 7];
+      r.stack.push('llc');
+      return dissectEthertype(et, b, p + 8, r);
+    }
+    r.info = w.name + ', payload is not SNAP encapsulated';
+    return -1;
+  }
+
+  r.proto = '802.11 ' + (W_TYPE[type] || type);
+  r.info = 'frame type ' + type + ' subtype ' + sub;
+  return -1;
+};
+
+function dissectMgmt(b, o, r, w, sub) {
+  var bits = [];
+  if (sub === 8 || sub === 5) {
+    if (b.length < o + 12) { r.info = w.name + ', truncated body'; return; }
+    w.beaconInterval = (b[o] | (b[o + 1] << 8));
+    var cap = b[o + 10] | (b[o + 11] << 8);
+    w.privacy = !!(cap & 0x10);
+    w.beaconInterval = (b[o + 8] | (b[o + 9] << 8));
+    readTags(b, o + 12, r, w);
+  } else if (sub === 0 || sub === 2) {
+    readTags(b, o + (sub === 0 ? 4 : 10), r, w);
+  } else if (sub === 4) {
+    readTags(b, o, r, w);
+  } else if (sub === 1 || sub === 3) {
+    if (b.length >= o + 6) w.status = (b[o + 2] | (b[o + 3] << 8));
+    readTags(b, o + 6, r, w);
+  } else if (sub === 10 || sub === 12) {
+    if (b.length >= o + 2) {
+      w.reason = (b[o] | (b[o + 1] << 8));
+      w.reasonText = W_REASON[w.reason] || ('reason code ' + w.reason);
+    }
+  } else if (sub === 11) {
+    if (b.length >= o + 6) {
+      w.authAlg = (b[o] | (b[o + 1] << 8));
+      w.authSeq = (b[o + 2] | (b[o + 3] << 8));
+      w.status = (b[o + 4] | (b[o + 5] << 8));
+    }
+  }
+
+  if (w.ssid != null) bits.push(w.ssid === '' ? 'hidden SSID' : 'SSID "' + w.ssid + '"');
+  if (w.channel) bits.push('channel ' + w.channel);
+  if (w.security) bits.push(w.security);
+  else if (w.privacy) bits.push('WEP');
+  else if (sub === 8 || sub === 5) bits.push('open');
+  if (w.reasonText) bits.push(w.reasonText);
+  if (w.status != null && w.status !== 0) bits.push('status ' + w.status);
+  if (w.bssid && sub !== 4) bits.push('bssid ' + w.bssid);
+  r.info = w.name + (bits.length ? ': ' + bits.join(', ') : '');
+  r.app = w.ssid ? ('802.11 ' + w.name) : r.app;
+}
+
+function readTags(b, o, r, w) {
+  var p = o, guard = 0;
+  while (p + 2 <= b.length && guard++ < 60) {
+    var id = b[p], len = b[p + 1], val = p + 2;
+    if (val + len > b.length) break;
+    if (id === 0) {
+      var ssid = '', printable = true;
+      for (var i = 0; i < len; i++) {
+        var c = b[val + i];
+        if (c === 0 && len === 1) { printable = true; break; }
+        if (c < 32 || c > 126) printable = false;
+        ssid += String.fromCharCode(c);
+      }
+      w.ssid = (len === 0 || (len === 1 && b[val] === 0)) ? '' : (printable ? ssid : '(unprintable SSID)');
+      w.ssidHidden = (w.ssid === '');
+    } else if (id === 3 && len >= 1) {
+      w.channel = b[val];
+    } else if (id === 48) {
+      w.rsn = true;
+      w.security = readRsn(b, val, len);
+    } else if (id === 221 && len >= 4 &&
+               b[val] === 0x00 && b[val + 1] === 0x50 && b[val + 2] === 0xf2 && b[val + 3] === 1) {
+      w.wpa1 = true;
+      if (!w.security) w.security = 'WPA';
+    }
+    p = val + len;
+  }
+  if (w.rsn && w.wpa1) w.security = 'WPA/WPA2 mixed';
+}
+
+var AKM = { 1: '802.1X', 2: 'PSK', 3: 'FT 802.1X', 4: 'FT PSK', 5: '802.1X SHA256', 6: 'PSK SHA256',
+            8: 'SAE', 9: 'FT SAE', 11: 'Suite B 802.1X', 12: 'Suite B 802.1X 384', 18: 'OWE' };
+var CIPHER = { 1: 'WEP-40', 2: 'TKIP', 4: 'CCMP', 5: 'WEP-104', 8: 'GCMP', 9: 'GCMP-256', 10: 'CCMP-256' };
+
+function readRsn(b, o, len) {
+  if (len < 8) return 'RSN';
+  var p = o + 2;                                  /* version */
+  var group = CIPHER[b[p + 3]] || 'cipher ' + b[p + 3];
+  p += 4;
+  var n = b[p] | (b[p + 1] << 8); p += 2;
+  var pair = [];
+  for (var i = 0; i < n && p + 4 <= o + len; i++) { pair.push(CIPHER[b[p + 3]] || ('cipher ' + b[p + 3])); p += 4; }
+  var akms = [];
+  if (p + 2 <= o + len) {
+    var m = b[p] | (b[p + 1] << 8); p += 2;
+    for (var j = 0; j < m && p + 4 <= o + len; j++) { akms.push(AKM[b[p + 3]] || ('akm ' + b[p + 3])); p += 4; }
+  }
+  var name = akms.indexOf('SAE') >= 0 ? 'WPA3' : (akms.indexOf('OWE') >= 0 ? 'OWE' : 'WPA2');
+  if (akms.indexOf('SAE') >= 0 && akms.indexOf('PSK') >= 0) name = 'WPA2/WPA3 transitional';
+  return name + ' (' + (akms.join('+') || 'no akm') + ', ' + (pair.join('+') || group) + ')';
+}
+
+/* -- EAPOL, so a four way handshake can be recognised ----------------- */
+DN.dissectEapol = function (b, o, r) {
+  r.stack.push('eapol'); r.proto = 'EAPOL'; r.app = 'EAPOL';
+  if (b.length < o + 4) { r.info = 'truncated EAPOL'; return -1; }
+  var type = b[o + 1];
+  if (type !== 3 || b.length < o + 99) {
+    r.info = 'EAPOL type ' + type;
+    return -1;
+  }
+  var ki = (b[o + 5] << 8) | b[o + 6];
+  var mic = !!(ki & 0x0100), ack = !!(ki & 0x0080), install = !!(ki & 0x0040),
+      secure = !!(ki & 0x0200), pairwise = !!(ki & 0x0008);
+  var dataLen = (b[o + 97] << 8) | b[o + 98];
+  var m = null;
+  if (pairwise) {
+    if (ack && !mic) m = 1;
+    else if (!ack && mic && !secure) m = 2;
+    else if (ack && mic && install) m = 3;
+    else if (!ack && mic && secure) m = 4;
+    else if (ack && mic) m = 3;
+  }
+  r.eapol = { message: m, pairwise: pairwise, keyDataLen: dataLen, replay: null };
+  r.info = 'EAPOL key' + (m ? ', message ' + m + ' of 4 in the handshake' : '') +
+           (pairwise ? '' : ' (group key)');
+  if (m === 1 || m === 3) r.eapol.fromAp = true;
+  return -1;
+};
+
+/* -- link layer ------------------------------------------------------ */
+function dissectLink(p, r) {
+  var b = p.bytes, lt = p.linktype;
+  if (lt === 1) {                               /* Ethernet */
+    if (b.length < 14) { r.note = 'runt Ethernet frame'; return -1; }
+    r.macDst = DN.mac(b, 0); r.macSrc = DN.mac(b, 6);
+    var et = (b[12] << 8) | b[13], off = 14;
+    while ((et === 0x8100 || et === 0x88a8 || et === 0x9100) && b.length >= off + 4) {
+      r.vlan = ((b[off] << 8) | b[off + 1]) & 0x0fff;
+      et = (b[off + 2] << 8) | b[off + 3];
+      off += 4;
+    }
+    r.ethertype = et;
+    r.stack.push('eth');
+    return dissectEthertype(et, b, off, r);
+  }
+  if (lt === 127) {                              /* radiotap then 802.11 */
+    var rt = DN.parseRadiotap(b, 0);
+    if (!rt) { r.proto = '802.11 radiotap'; r.info = 'radiotap header could not be read'; return -1; }
+    r.radiotap = rt;
+    r.stack.push('radiotap');
+    var res = DN.dissect80211(b, rt.len, r);
+    if (r.wifi) {
+      r.wifi.signal = rt.signal; r.wifi.channel = r.wifi.channel || rt.channel;
+      r.wifi.freq = rt.freq; r.wifi.rate = rt.rate; r.wifi.band = rt.band;
+      if (rt.badFcs) { r.wifi.badFcs = true; r.info = (r.info || '') + ' (bad checksum)'; }
+    }
+    return res;
+  }
+  if (lt === 105) return DN.dissect80211(b, 0, r);
+  if (lt === 119) {                              /* Prism monitoring header */
+    if (b.length < 144) { r.proto = '802.11'; r.info = 'truncated Prism header'; return -1; }
+    r.stack.push('prism');
+    return DN.dissect80211(b, 144, r);
+  }
+  if (lt === 163) {                              /* AVS capture header */
+    if (b.length < 8) { r.proto = '802.11'; r.info = 'truncated AVS header'; return -1; }
+    var avsLen = ((b[4] << 24) >>> 0) + (b[5] << 16) + (b[6] << 8) + b[7];
+    if (avsLen < 8 || avsLen > b.length) avsLen = 64;
+    r.stack.push('avs');
+    return DN.dissect80211(b, avsLen, r);
+  }
+  if (lt === 101 || lt === 228 || lt === 12) {  /* raw IP */
+    return dissectIp(b, 0, r);
+  }
+  if (lt === 229) { r.stack.push('ip6'); return dissectIp6(b, 0, r); }
+  if (lt === 0) {                                /* BSD loopback */
+    if (b.length < 4) return -1;
+    var fam = (b[0] | (b[1] << 8) | (b[2] << 16) | (b[3] << 24));
+    r.stack.push('lo');
+    if (fam === 2) return dissectIp(b, 4, r);
+    if (fam === 24 || fam === 28 || fam === 30) { r.stack.push('ip6'); return dissectIp6(b, 4, r); }
+    return -1;
+  }
+  if (lt === 113) {                              /* Linux SLL */
+    if (b.length < 16) return -1;
+    r.stack.push('sll');
+    return dissectEthertype((b[14] << 8) | b[15], b, 16, r);
+  }
+  if (lt === 276) {                              /* Linux SLL2 */
+    if (b.length < 20) return -1;
+    r.stack.push('sll2');
+    return dissectEthertype((b[0] << 8) | b[1], b, 20, r);
+  }
+  r.stack.push('link-' + lt);
+  r.proto = DN.LINKTYPES[lt] || ('link ' + lt);
+  r.info = 'Link type ' + lt + ' is counted but not dissected';
+  return -1;
+}
+
+function dissectEthertype(et, b, off, r) {
+  if (et === 0x0800) return dissectIp(b, off, r);
+  if (et === 0x86dd) { r.stack.push('ip6'); return dissectIp6(b, off, r); }
+  if (et === 0x0806) return dissectArp(b, off, r);
+  if (et === 0x8035) { r.proto = 'RARP'; r.stack.push('rarp'); return -1; }
+  if (et === 0x88cc) { r.proto = 'LLDP'; r.stack.push('lldp'); r.info = 'link layer discovery advertisement'; return -1; }
+  if (et === 0x888e) return DN.dissectEapol(b, off, r);
+  if (et === 0x8863 || et === 0x8864) { r.proto = 'PPPoE'; r.stack.push('pppoe'); return -1; }
+  if (et <= 1500) { r.proto = 'LLC'; r.stack.push('llc'); return -1; }
+  r.proto = 'Ether 0x' + et.toString(16);
+  r.stack.push('ether-other');
+  return -1;
+}
+
+function dissectArp(b, o, r) {
+  r.stack.push('arp'); r.proto = 'ARP';
+  if (b.length < o + 28) { r.info = 'truncated ARP'; return -1; }
+  var op = (b[o + 6] << 8) | b[o + 7];
+  var sha = DN.mac(b, o + 8), spa = DN.ip4(b, o + 14);
+  var tha = DN.mac(b, o + 18), tpa = DN.ip4(b, o + 24);
+  r.arp = { op: op, sha: sha, spa: spa, tha: tha, tpa: tpa };
+  r.src = spa; r.dst = tpa;
+  if (op === 1) {
+    r.info = (spa === tpa) ? ('Gratuitous ARP, ' + spa + ' is at ' + sha)
+                           : ('Who has ' + tpa + '? Tell ' + spa);
+  } else if (op === 2) {
+    r.info = spa + ' is at ' + sha;
+  } else r.info = 'ARP opcode ' + op;
+  return -1;
+}
+
+function dissectIp(b, o, r) {
+  r.stack.push('ip4');
+  if (b.length < o + 20) { r.proto = 'IPv4'; r.info = 'truncated IPv4 header'; return -1; }
+  var ihl = (b[o] & 0x0f) * 4;
+  r.ipVersion = 4;
+  r.totalLen = (b[o + 2] << 8) | b[o + 3];
+  r.ttl = b[o + 8];
+  var proto = b[o + 9];
+  r.src = DN.ip4(b, o + 12); r.dst = DN.ip4(b, o + 16);
+  r.ipId = (b[o + 4] << 8) | b[o + 5];
+  var flagsFrag = (b[o + 6] << 8) | b[o + 7];
+  r.fragOffset = flagsFrag & 0x1fff;
+  r.moreFrags = !!(flagsFrag & 0x2000);
+  r.dontFrag = !!(flagsFrag & 0x4000);
+  if (r.fragOffset > 0 || r.moreFrags) {
+    r.fragment = { ver: 4, id: r.ipId, off: r.fragOffset * 8, more: r.moreFrags,
+                   proto: proto, dataOff: o + ihl,
+                   dataLen: Math.max(0, Math.min(b.length - (o + ihl), r.totalLen - ihl)) };
+  }
+  if (r.fragOffset > 0) {
+    r.proto = 'IPv4 frag';
+    r.ipproto = proto;
+    r.info = 'fragment at offset ' + (r.fragOffset * 8) + ' of a ' + (DN.IPPROTO[proto] || proto) + ' datagram';
+    return -1;
+  }
+  return dissectIpPayload(proto, b, o + ihl, r);
+}
+
+function dissectIp6(b, o, r) {
+  if (b.length < o + 40) { r.proto = 'IPv6'; r.info = 'truncated IPv6 header'; return -1; }
+  r.ipVersion = 6;
+  r.src = DN.ip6(b, o + 8); r.dst = DN.ip6(b, o + 24);
+  r.ttl = b[o + 7];
+  var next = b[o + 6], p = o + 40, guard = 0;
+  while ((next === 0 || next === 43 || next === 60 || next === 51) && b.length > p + 8 && guard++ < 8) {
+    var hlen = (b[p + 1] + 1) * 8;
+    next = b[p];
+    p += hlen;
+  }
+  if (next === 44) {
+    if (b.length < p + 8) { r.proto = 'IPv6 frag'; r.info = 'truncated fragment header'; return -1; }
+    var fnext = b[p], fo = ((b[p + 2] << 8) | b[p + 3]);
+    var foff = (fo & 0xfff8), fmore = !!(fo & 1);
+    r.ipId = ((b[p+4] << 24) >>> 0) + (b[p+5] << 16) + (b[p+6] << 8) + b[p+7];
+    r.fragOffset = foff >> 3; r.moreFrags = fmore;
+    r.fragment = { ver: 6, id: r.ipId, off: foff, more: fmore, proto: fnext,
+                   dataOff: p + 8, dataLen: Math.max(0, b.length - (p + 8)) };
+    if (foff > 0) {
+      r.proto = 'IPv6 frag'; r.ipproto = fnext;
+      r.info = 'fragment at offset ' + foff + ' of a ' + (DN.IPPROTO[fnext] || fnext) + ' datagram';
+      return -1;
+    }
+    return dissectIpPayload(fnext, b, p + 8, r);
+  }
+  return dissectIpPayload(next, b, p, r);
+}
+
+function dissectIpPayload(proto, b, o, r) {
+  r.ipproto = proto;
+  if (proto === 6) return dissectTcp(b, o, r);
+  if (proto === 17) return dissectUdp(b, o, r);
+  if (proto === 1) return dissectIcmp(b, o, r, 4);
+  if (proto === 58) return dissectIcmp(b, o, r, 6);
+  if (proto === 2) { r.proto = 'IGMP'; r.stack.push('igmp'); return -1; }
+  r.proto = DN.IPPROTO[proto] || ('IP proto ' + proto);
+  r.stack.push('ip-other');
+  return -1;
+}
+
+var TCP_FLAGS = [['FIN',0x01],['SYN',0x02],['RST',0x04],['PSH',0x08],['ACK',0x10],['URG',0x20],['ECE',0x40],['CWR',0x80]];
+
+function dissectTcp(b, o, r) {
+  r.stack.push('tcp'); r.proto = 'TCP'; r.transport = 'TCP';
+  if (b.length < o + 20) { r.info = 'truncated TCP header'; return -1; }
+  r.sport = (b[o] << 8) | b[o + 1];
+  r.dport = (b[o + 2] << 8) | b[o + 3];
+  r.seq = ((b[o+4] << 24) >>> 0) + (b[o+5] << 16) + (b[o+6] << 8) + b[o+7];
+  r.ack = ((b[o+8] << 24) >>> 0) + (b[o+9] << 16) + (b[o+10] << 8) + b[o+11];
+  var doff = (b[o + 12] >> 4) * 4;
+  var fl = b[o + 13];
+  r.window = (b[o + 14] << 8) | b[o + 15];
+  var names = [];
+  for (var i = 0; i < TCP_FLAGS.length; i++) if (fl & TCP_FLAGS[i][1]) names.push(TCP_FLAGS[i][0]);
+  r.flags = names; r.flagBits = fl;
+  var pstart = o + doff;
+  r.payloadOff = pstart;
+  r.headerLen = doff;
+  r.payloadLen = Math.max(0, b.length - pstart);
+  r.service = DN.serviceName(r.sport, r.dport);
+  r.info = r.sport + ' \u2192 ' + r.dport + ' [' + names.join(',') + ']' +
+           (r.payloadLen ? ' len=' + r.payloadLen : '');
+  if (r.payloadLen > 0) dissectAppLayer(b, pstart, r, 'tcp');
+  return pstart;
+}
+
+function dissectUdp(b, o, r) {
+  r.stack.push('udp'); r.proto = 'UDP'; r.transport = 'UDP';
+  if (b.length < o + 8) { r.info = 'truncated UDP header'; return -1; }
+  r.sport = (b[o] << 8) | b[o + 1];
+  r.dport = (b[o + 2] << 8) | b[o + 3];
+  var ulen = (b[o + 4] << 8) | b[o + 5];
+  var pstart = o + 8;
+  r.payloadOff = pstart;
+  r.payloadLen = Math.max(0, Math.min(b.length - pstart, ulen - 8));
+  r.service = DN.serviceName(r.sport, r.dport);
+  r.info = r.sport + ' \u2192 ' + r.dport + ' len=' + r.payloadLen;
+  if (r.payloadLen > 0) dissectAppLayer(b, pstart, r, 'udp');
+  return pstart;
+}
+
+function dissectIcmp(b, o, r, ver) {
+  r.stack.push(ver === 6 ? 'icmp6' : 'icmp');
+  r.proto = ver === 6 ? 'ICMPv6' : 'ICMP';
+  r.transport = r.proto;
+  if (b.length < o + 4) { r.info = 'truncated ICMP'; return -1; }
+  var t = b[o], c = b[o + 1];
+  r.icmpType = t; r.icmpCode = c;
+  var m4 = { 0:'echo reply', 3:'destination unreachable', 4:'source quench', 5:'redirect',
+             8:'echo request', 11:'time exceeded', 12:'parameter problem', 13:'timestamp request', 14:'timestamp reply' };
+  var m6 = { 1:'destination unreachable', 2:'packet too big', 3:'time exceeded', 128:'echo request',
+             129:'echo reply', 133:'router solicitation', 134:'router advertisement',
+             135:'neighbor solicitation', 136:'neighbor advertisement' };
+  var name = (ver === 6 ? m6[t] : m4[t]) || ('type ' + t);
+  r.icmpName = name;
+  r.info = name + (c ? ' code ' + c : '');
+  return o + 4;
+}
+
+/* -- application layer ------------------------------------------------ */
+function isPrintableRun(b, o, n) {
+  for (var i = 0; i < n; i++) { var c = b[o + i]; if (c < 9 || (c > 13 && c < 32) || c > 126) return false; }
+  return true;
+}
+function textOf(b, o, n) {
+  var s = '';
+  for (var i = 0; i < n && o + i < b.length; i++) s += String.fromCharCode(b[o + i]);
+  return s;
+}
+
+var HTTP_METHODS = ['GET ','POST ','HEAD ','PUT ','DELETE ','OPTIONS ','PATCH ','TRACE ','CONNECT '];
+
+function dissectAppLayer(b, o, r, tp) {
+  var sp = r.sport, dp = r.dport;
+  /* DNS and mDNS */
+  if (sp === 53 || dp === 53 || sp === 5353 || dp === 5353) {
+    r.app = (sp === 5353 || dp === 5353) ? 'MDNS' : 'DNS';
+    r.stack.push('dns');
+    try { decorateDns(b, o, r); } catch (e) { r.appNote = 'DNS parse gave up'; }
+    return;
+  }
+  if (sp === 67 || dp === 67 || sp === 68 || dp === 68) { r.app = 'DHCP'; r.stack.push('dhcp'); r.info = 'DHCP ' + r.info; return; }
+  if (sp === 1900 || dp === 1900) { r.app = 'SSDP'; r.stack.push('ssdp'); return; }
+  if (sp === 123 || dp === 123) { r.app = 'NTP'; r.stack.push('ntp'); return; }
+  if (sp === 137 || dp === 137) { r.app = 'NBNS'; r.stack.push('nbns'); return; }
+
+  /* TLS: content type 20..24, then a plausible version */
+  if (tp === 'tcp' && b.length > o + 5 && b[o] >= 20 && b[o] <= 24 && b[o + 1] === 3 && b[o + 2] <= 4) {
+    r.app = 'TLS'; r.stack.push('tls');
+    try { decorateTls(b, o, r); } catch (e) { r.appNote = 'TLS parse gave up'; }
+    return;
+  }
+  /* HTTP */
+  if (tp === 'tcp' && b.length > o + 8) {
+    var head = textOf(b, o, Math.min(24, b.length - o));
+    var isReq = false, i;
+    for (i = 0; i < HTTP_METHODS.length; i++) if (head.indexOf(HTTP_METHODS[i]) === 0) { isReq = true; break; }
+    if (isReq || head.indexOf('HTTP/1.') === 0) {
+      r.app = 'HTTP'; r.stack.push('http');
+      decorateHttp(b, o, r, isReq);
+      return;
+    }
+  }
+  /* plain text protocols worth naming */
+  if (tp === 'tcp' && isPrintableRun(b, o, Math.min(6, b.length - o))) {
+    var svc = DN.serviceName(sp, dp);
+    if (svc === 'FTP' || svc === 'SMTP' || svc === 'POP3' || svc === 'IMAP' || svc === 'TELNET' || svc === 'IRC') {
+      r.app = svc; r.stack.push(svc.toLowerCase());
+      var line = textOf(b, o, Math.min(80, b.length - o)).split('\r')[0].split('\n')[0];
+      r.appInfo = line;
+      r.info = svc + ': ' + line;
+      var up = line.toUpperCase();
+      if (up.indexOf('USER ') === 0 || up.indexOf('PASS ') === 0 || up.indexOf('AUTH LOGIN') === 0 || up.indexOf('LOGIN ') === 0) {
+        r.credentialRisk = svc;
+      }
+      return;
+    }
+  }
+  var known = DN.serviceName(sp, dp);
+  if (known) { r.app = known; }
+}
+
+/* DNS ------------------------------------------------------------------ */
+function dnsName(b, o, end, depth) {
+  var labels = [], guard = 0;
+  depth = depth || 0;
+  while (o < end && guard++ < 128) {
+    var len = b[o];
+    if (len === 0) { o++; break; }
+    if ((len & 0xc0) === 0xc0) {
+      if (depth > 5) break;
+      var ptr = ((len & 0x3f) << 8) | b[o + 1];
+      var sub = dnsName(b, ptr, end, depth + 1);
+      if (sub.name) labels.push(sub.name);
+      o += 2;
+      return { name: labels.join('.'), next: o };
+    }
+    o++;
+    labels.push(textOf(b, o, len));
+    o += len;
+  }
+  return { name: labels.join('.'), next: o };
+}
+
+DN.DNS_TYPES = { 1:'A', 2:'NS', 5:'CNAME', 6:'SOA', 12:'PTR', 15:'MX', 16:'TXT', 28:'AAAA', 33:'SRV', 65:'HTTPS', 255:'ANY' };
+
+function decorateDns(b, o, r) {
+  var end = b.length;
+  if (o + 12 > end) return;
+  var flags = (b[o + 2] << 8) | b[o + 3];
+  var qr = (flags >> 15) & 1, rcode = flags & 0x0f;
+  var qd = (b[o + 4] << 8) | b[o + 5], an = (b[o + 6] << 8) | b[o + 7];
+  var p = o + 12, i, q = [];
+  for (i = 0; i < qd && p < end; i++) {
+    var nm = dnsName(b, p, end, 0);
+    p = nm.next + 4;
+    var qtype = (b[nm.next] << 8) | b[nm.next + 1];
+    q.push({ name: nm.name, type: DN.DNS_TYPES[qtype] || qtype });
+  }
+  r.dns = { qr: qr, rcode: rcode, questions: q, answers: [] };
+  if (qr === 1) {
+    for (i = 0; i < an && p + 10 < end; i++) {
+      var an1 = dnsName(b, p, end, 0);
+      p = an1.next;
+      var atype = (b[p] << 8) | b[p + 1];
+      var rdlen = (b[p + 8] << 8) | b[p + 9];
+      var rd = p + 10;
+      var val = null;
+      if (atype === 1 && rdlen === 4) val = DN.ip4(b, rd);
+      else if (atype === 28 && rdlen === 16) val = DN.ip6(b, rd);
+      else if (atype === 5 || atype === 12) val = dnsName(b, rd, end, 0).name;
+      r.dns.answers.push({ name: an1.name, type: DN.DNS_TYPES[atype] || atype, value: val });
+      p = rd + rdlen;
+    }
+  }
+  var qn = q.length ? q[0].name : '(no question)';
+  var RC = { 0:'ok', 1:'format error', 2:'server failure', 3:'no such name', 5:'refused' };
+  r.info = (qr ? 'Answer for ' : 'Query for ') + qn +
+           (qr ? ' (' + (RC[rcode] || ('rcode ' + rcode)) + ')' : '') +
+           (qr && r.dns.answers.length ? ': ' + r.dns.answers.map(function (a) { return a.value || a.type; }).join(', ') : '');
+}
+
+/* TLS ------------------------------------------------------------------ */
+DN.TLS_VER = { 0x0300:'SSL 3.0', 0x0301:'TLS 1.0', 0x0302:'TLS 1.1', 0x0303:'TLS 1.2', 0x0304:'TLS 1.3' };
+
+function decorateTls(b, o, r) {
+  var ct = b[o];
+  var ver = (b[o + 1] << 8) | b[o + 2];
+  var rlen = (b[o + 3] << 8) | b[o + 4];
+  var typeName = { 20:'change cipher spec', 21:'alert', 22:'handshake', 23:'application data' }[ct] || ('record type ' + ct);
+  r.tls = { contentType: ct, recordVersion: DN.TLS_VER[ver] || ('0x' + ver.toString(16)), length: rlen };
+  r.info = 'TLS ' + typeName + ' (' + rlen + ' bytes)';
+  if (ct !== 22) {
+    if (ct === 21) r.tlsAlert = true;
+    return;
+  }
+  var h = o + 5;
+  if (h + 4 > b.length) return;
+  var hs = b[h];
+  var hsName = { 1:'client hello', 2:'server hello', 11:'certificate', 12:'server key exchange',
+                 14:'server hello done', 16:'client key exchange', 4:'new session ticket' }[hs] || ('handshake ' + hs);
+  r.tls.handshake = hsName;
+  r.info = 'TLS ' + hsName;
+  if (hs !== 1 && hs !== 2) return;
+  var p = h + 4;
+  p += 2;                       /* client version */
+  p += 32;                      /* random */
+  if (p >= b.length) return;
+  var sidLen = b[p]; p += 1 + sidLen;
+  if (hs === 1) {
+    if (p + 2 > b.length) return;
+    var csLen = (b[p] << 8) | b[p + 1]; p += 2 + csLen;
+    if (p >= b.length) return;
+    var cmLen = b[p]; p += 1 + cmLen;
+  } else {
+    p += 2;                     /* chosen cipher */
+    p += 1;                     /* compression */
+  }
+  if (p + 2 > b.length) return;
+  var extTotal = (b[p] << 8) | b[p + 1]; p += 2;
+  var extEnd = Math.min(b.length, p + extTotal);
+  while (p + 4 <= extEnd) {
+    var etype = (b[p] << 8) | b[p + 1];
+    var elen = (b[p + 2] << 8) | b[p + 3];
+    var ebody = p + 4;
+    if (etype === 0 && ebody + 5 <= b.length) {          /* server_name */
+      var nlen = (b[ebody + 3] << 8) | b[ebody + 4];
+      r.tls.sni = textOf(b, ebody + 5, Math.min(nlen, b.length - ebody - 5));
+      r.info = 'TLS ' + hsName + ' for ' + r.tls.sni;
+    } else if (etype === 43 && ebody < b.length) {        /* supported_versions */
+      var svLen = (hs === 1) ? b[ebody] : 2;
+      var base = (hs === 1) ? ebody + 1 : ebody;
+      var best = 0;
+      for (var k = 0; k + 1 < svLen; k += 2) {
+        var vv = (b[base + k] << 8) | b[base + k + 1];
+        if (DN.TLS_VER[vv] && vv > best) best = vv;
+      }
+      if (best) r.tls.negotiatedHint = DN.TLS_VER[best];
+    }
+    p = ebody + elen;
+  }
+}
+
+/* HTTP ----------------------------------------------------------------- */
+function decorateHttp(b, o, r, isReq) {
+  var text = textOf(b, o, Math.min(2048, b.length - o));
+  var headEnd = text.indexOf('\r\n\r\n');
+  var head = headEnd >= 0 ? text.slice(0, headEnd) : text;
+  var lines = head.split('\r\n');
+  var first = lines[0] || '';
+  var h = {};
+  for (var i = 1; i < lines.length; i++) {
+    var c = lines[i].indexOf(':');
+    if (c > 0) h[lines[i].slice(0, c).toLowerCase().trim()] = lines[i].slice(c + 1).trim();
+  }
+  r.http = { first: first, headers: h, isRequest: isReq };
+  if (isReq) {
+    var bits = first.split(' ');
+    r.http.method = bits[0]; r.http.path = bits[1];
+    r.http.host = h['host'] || null;
+    r.info = bits[0] + ' ' + (h['host'] ? h['host'] : '') + (bits[1] || '');
+    if (h['authorization']) r.credentialRisk = 'HTTP ' + (h['authorization'].split(' ')[0] || 'Authorization');
+    if (bits[0] === 'POST' && /login|signin|auth|password|session/i.test(bits[1] || '')) r.credentialRisk = 'HTTP form post';
+  } else {
+    r.http.status = parseInt(first.split(' ')[1], 10) || null;
+    r.info = first + (h['content-type'] ? ' (' + h['content-type'].split(';')[0] + ')' : '');
+  }
+}
+
+/* -- one packet -------------------------------------------------------- */
+DN.dissect = function (p) {
+  var r = { i: p.i, ts: p.ts, caplen: p.caplen, origlen: p.origlen, stack: [], proto: 'unknown', info: '' };
+  try {
+    dissectLink(p, r);
+  } catch (e) {
+    r.proto = r.proto || 'error';
+    r.info = 'dissector stopped: ' + (e && e.message ? e.message : e);
+    r.dissectError = true;
+  }
+  r.label = r.app || r.proto;
+  return r;
+};
+
+/* ====================================================================
+   REASSEMBLY
+   Fragments become datagrams, segments become streams, and the
+   retransmission guess becomes a classification.
+   ==================================================================== */
+
+DN.MAX_STREAM = 4 * 1024 * 1024;   /* per direction, per conversation */
+DN.MAX_FLOWS = 4000;
+
+function bytesOf(r, packets) {
+  if (r.dataBuf) return r.dataBuf;
+  var p = packets[r.i];
+  return p ? p.bytes : null;
+}
+DN.bytesOf = bytesOf;
+
+/* -- IP defragmentation ------------------------------------------------
+   Fragments are grouped by source, destination, identifier and protocol,
+   ordered by offset, and only reassembled when the run is contiguous from
+   zero and the last piece says it is the last piece. Anything short of
+   that is reported as incomplete rather than quietly stitched.        */
+
+DN.defragment = function (rows, packets) {
+  var groups = new Map(), order = [];
+  var res = { datagrams: 0, incomplete: 0, fragments: 0, rebuilt: [] };
+
+  rows.forEach(function (r) {
+    if (!r.fragment || !r.src) return;
+    res.fragments++;
+    var k = r.src + '|' + r.dst + '|' + r.fragment.ver + '|' + r.fragment.id + '|' + r.fragment.proto;
+    if (!groups.has(k)) { groups.set(k, []); order.push(k); }
+    groups.get(k).push(r);
+  });
+
+  order.forEach(function (k) {
+    var parts = groups.get(k).slice().sort(function (a, b) { return a.fragment.off - b.fragment.off; });
+    var expect = 0, contiguous = true, i;
+    for (i = 0; i < parts.length; i++) {
+      var f = parts[i].fragment;
+      if (f.off > expect) { contiguous = false; break; }
+      expect = Math.max(expect, f.off + f.dataLen);
+    }
+    var last = parts[parts.length - 1];
+    if (!contiguous || last.fragment.more) {
+      res.incomplete++;
+      parts.forEach(function (p) {
+        p.fragIncomplete = true;
+        p.info = (p.info || '') + ' (part of an incomplete datagram)';
+      });
+      return;
+    }
+    if (expect > 1024 * 128) { res.incomplete++; return; }
+
+    var buf = new Uint8Array(expect);
+    for (i = 0; i < parts.length; i++) {
+      var pr = parts[i], ff = pr.fragment, src = packets[pr.i] && packets[pr.i].bytes;
+      if (!src) continue;
+      buf.set(src.subarray(ff.dataOff, Math.min(src.length, ff.dataOff + ff.dataLen)), ff.off);
+    }
+
+    var head = parts[0];
+    var r2 = { i: head.i, ts: head.ts, stack: [], proto: '', info: '',
+               src: head.src, dst: head.dst, ipVersion: head.ipVersion };
+    try { dissectIpPayload(head.fragment.proto, buf, 0, r2); }
+    catch (e) { res.incomplete++; return; }
+
+    Object.keys(r2).forEach(function (key) {
+      if (key === 'i' || key === 'ts' || key === 'src' || key === 'dst' || key === 'stack') return;
+      head[key] = r2[key];
+    });
+    r2.stack.forEach(function (s) { if (head.stack.indexOf(s) < 0) head.stack.push(s); });
+    head.dataBuf = buf;
+    head.defragged = true;
+    head.fragParts = parts.map(function (p) { return p.i; });
+    head.label = head.app || head.proto;
+    head.info = 'reassembled from ' + parts.length + ' fragments: ' + (head.info || '');
+    for (i = 1; i < parts.length; i++) {
+      parts[i].fragConsumed = true;
+      parts[i].info = 'fragment carried into packet ' + (head.i + 1);
+    }
+    res.datagrams++;
+    res.rebuilt.push(head.i);
+  });
+
+  return res;
+};
+
+/* -- a set of accepted byte ranges, kept merged and in order ----------- */
+function RangeSet() { this.r = []; }
+RangeSet.prototype.covers = function (s, e) {
+  for (var i = 0; i < this.r.length; i++) {
+    if (this.r[i][0] <= s && this.r[i][1] >= e) return true;
+    if (this.r[i][0] > s) break;
+  }
+  return false;
+};
+RangeSet.prototype.touches = function (s, e) {
+  for (var i = 0; i < this.r.length; i++) {
+    if (this.r[i][0] < e && this.r[i][1] > s) return true;
+    if (this.r[i][0] >= e) break;
+  }
+  return false;
+};
+RangeSet.prototype.add = function (s, e) {
+  if (e <= s) return;
+  var out = [], i = 0, n = this.r.length;
+  while (i < n && this.r[i][1] < s) out.push(this.r[i++]);
+  var ns = s, ne = e;
+  while (i < n && this.r[i][0] <= ne) { ns = Math.min(ns, this.r[i][0]); ne = Math.max(ne, this.r[i][1]); i++; }
+  out.push([ns, ne]);
+  while (i < n) out.push(this.r[i++]);
+  this.r = out;
+};
+RangeSet.prototype.contiguousEnd = function () {
+  if (!this.r.length || this.r[0][0] > 0) return 0;
+  return this.r[0][1];
+};
+DN.RangeSet = RangeSet;
+
+function newDir() {
+  return {
+    isn: null, isnGuessed: false, synSeen: false, finSeen: false, rstSeen: false,
+    ranges: new RangeSet(), pieces: [], bytes: 0, segments: 0,
+    retrans: 0, fastRetrans: 0, spurious: 0, ooo: 0, keepAlive: 0, overlap: 0,
+    dupAcks: 0, lastAck: null, ackedRel: 0, truncated: false,
+    stream: null, gaps: [], messages: []
+  };
+}
+
+/* -- TCP reassembly ----------------------------------------------------
+   One state machine per direction. Every segment is placed against the
+   ranges already accepted, which is what lets a retransmission be told
+   apart from an arrival out of order: a retransmission covers ground the
+   reader has already been over, an out of order segment lands past a hole
+   that has not been filled yet.                                       */
+
+DN.reassemble = function (rows, packets, opts) {
+  opts = opts || {};
+  var flows = new Map(), segClass = {}, order = [], byIdx = new Map();
+  rows.forEach(function (r) { byIdx.set(r.i, r); });
+  var totals = { retrans: 0, fastRetrans: 0, spurious: 0, ooo: 0, keepAlive: 0,
+                 overlap: 0, dupAcks: 0, gaps: 0, streams: 0, bytes: 0, flows: 0, truncated: 0 };
+
+  rows.forEach(function (r) {
+    if (r.transport !== 'TCP' || r.fragConsumed) return;
+    var ck = DN.convKey(r);
+    if (!ck) return;
+    if (!flows.has(ck.key)) {
+      if (flows.size >= DN.MAX_FLOWS) return;
+      flows.set(ck.key, { key: ck.key, a: newDir(), b: newDir(),
+                          aHost: ck.a.h, aPort: ck.a.p, bHost: ck.b.h, bPort: ck.b.p });
+      order.push(ck.key);
+    }
+    var fl = flows.get(ck.key);
+    var fromA = (r.src === fl.aHost && (fl.aPort == null || r.sport === fl.aPort));
+    var d = fromA ? fl.a : fl.b, peer = fromA ? fl.b : fl.a;
+    var isSyn = r.flags && r.flags.indexOf('SYN') >= 0;
+    var isFin = r.flags && r.flags.indexOf('FIN') >= 0;
+    var isRst = r.flags && r.flags.indexOf('RST') >= 0;
+
+    if (isRst) d.rstSeen = true;
+    if (isFin) d.finSeen = true;
+
+    if (isSyn && d.isn === null) { d.isn = r.seq; d.synSeen = true; }
+    if (d.isn === null && (r.payloadLen > 0 || isFin)) { d.isn = r.seq; d.isnGuessed = true; }
+
+    /* duplicate acknowledgement tracking, for fast retransmit detection */
+    if (r.flags && r.flags.indexOf('ACK') >= 0 && !r.payloadLen && !isSyn && !isFin && !isRst) {
+      if (d.lastAck === r.ack) { d.dupAcks++; totals.dupAcks++; }
+      else { d.lastAck = r.ack; d.dupAcks = 0; }
+    }
+    if (peer.isn !== null && r.ack != null) {
+      var ackRel = (r.ack - peer.isn - 1) >>> 0;
+      if (ackRel < 0x7fffffff && ackRel > peer.ackedRel) peer.ackedRel = ackRel;
+    }
+
+    if (!r.payloadLen || d.isn === null) return;
+
+    d.segments++;
+    var rel = ((r.seq - d.isn - (d.isnGuessed ? 0 : 1)) >>> 0);
+    if (rel > 0x7fffffff) return;                      /* before the handshake, ignore */
+    var end = rel + r.payloadLen;
+    var frontier = d.ranges.contiguousEnd();
+    var cls;
+
+    if (d.ranges.covers(rel, end)) {
+      if (r.payloadLen === 1 && end === frontier) { cls = 'keep alive'; d.keepAlive++; totals.keepAlive++; }
+      else if (end <= d.ackedRel) { cls = 'spurious retransmission'; d.spurious++; totals.spurious++; d.retrans++; totals.retrans++; }
+      else if (peer.dupAcks >= 3) { cls = 'fast retransmission'; d.fastRetrans++; totals.fastRetrans++; d.retrans++; totals.retrans++; }
+      else { cls = 'retransmission'; d.retrans++; totals.retrans++; }
+    } else if (d.ranges.touches(rel, end)) {
+      cls = 'overlap'; d.overlap++; totals.overlap++;
+    } else if (rel > frontier) {
+      cls = 'out of order'; d.ooo++; totals.ooo++;
+    } else {
+      cls = 'in order';
+    }
+
+    if (cls !== 'retransmission' && cls !== 'fast retransmission' &&
+        cls !== 'spurious retransmission' && cls !== 'keep alive') {
+      if (d.bytes + r.payloadLen > DN.MAX_STREAM) { d.truncated = true; totals.truncated++; }
+      else {
+        d.pieces.push({ rel: rel, off: r.payloadOff, len: r.payloadLen, i: r.i, ts: r.ts, defragged: !!r.defragged });
+        d.bytes += r.payloadLen;
+        d.ranges.add(rel, end);
+      }
+    }
+    segClass[r.i] = cls;
+  });
+
+  /* build the byte streams, first writer of any byte wins */
+  order.forEach(function (k) {
+    var fl = flows.get(k);
+    ['a', 'b'].forEach(function (side) {
+      var d = fl[side];
+      if (!d.pieces.length) return;
+      d.pieces.sort(function (x, y) { return x.rel - y.rel || x.i - y.i; });
+      var top = d.ranges.r.length ? d.ranges.r[d.ranges.r.length - 1][1] : 0;
+      var buf = new Uint8Array(Math.min(top, DN.MAX_STREAM));
+      var written = new RangeSet();
+      d.pieces.forEach(function (p) {
+        var row = byIdx.get(p.i);
+        var src = row ? bytesOf(row, packets) : null;
+        if (!src) return;
+        var start = p.rel, len = Math.min(p.len, buf.length - start);
+        if (len <= 0) return;
+        buf.set(src.subarray(p.off, p.off + len), start);
+        written.add(start, start + len);
+      });
+      d.stream = buf;
+      d.gaps = [];
+      var cursor = 0;
+      written.r.forEach(function (rg) {
+        if (rg[0] > cursor) d.gaps.push({ from: cursor, to: rg[0] });
+        cursor = rg[1];
+      });
+      totals.gaps += d.gaps.length;
+      totals.streams++;
+      totals.bytes += d.bytes;
+      d.messages = DN.decodeStream(buf, d.gaps, side === 'a' ? fl.aPort : fl.bPort);
+    });
+  });
+  totals.flows = flows.size;
+
+  return { flows: flows, order: order, segClass: segClass, totals: totals };
+};
+
+/* -- stream level decoding ---------------------------------------------
+   This is the whole point of reassembly. A request split over two
+   segments is one message here, and a header that lands past the first
+   packet is finally visible.                                          */
+
+function strAt(b, o, n) {
+  var s = '';
+  for (var i = o; i < Math.min(b.length, o + n); i++) s += String.fromCharCode(b[i]);
+  return s;
+}
+function findCRLF2(b, from) {
+  for (var i = from; i + 3 < b.length; i++) {
+    if (b[i] === 13 && b[i + 1] === 10 && b[i + 2] === 13 && b[i + 3] === 10) return i;
+  }
+  return -1;
+}
+var HTTP_START = /^(GET|POST|PUT|HEAD|DELETE|OPTIONS|PATCH|TRACE|CONNECT|PROPFIND|HTTP\/1\.[01]) /;
+
+DN.decodeStream = function (b, gaps, port) {
+  var msgs = [];
+  if (!b || !b.length) return msgs;
+  var head = strAt(b, 0, 16);
+
+  if (b[0] === 22 && b[1] === 3) return decodeTlsStream(b);
+  if (HTTP_START.test(head)) return decodeHttpStream(b, gaps);
+  return msgs;
+};
+
+function decodeHttpStream(b, gaps) {
+  var msgs = [], p = 0, guard = 0;
+  while (p < b.length && guard++ < 200) {
+    var hEnd = findCRLF2(b, p);
+    if (hEnd < 0) {
+      if (b.length - p > 4) msgs.push({ kind: 'http', partial: true, start: p,
+        head: strAt(b, p, 120).split('\r')[0], note: 'headers are incomplete in this capture' });
+      break;
+    }
+    var block = strAt(b, p, hEnd - p);
+    var lines = block.split('\r\n');
+    var start = lines.shift() || '';
+    if (!HTTP_START.test(start + ' ')) break;
+    var headers = {}, order = [];
+    lines.forEach(function (ln) {
+      var c = ln.indexOf(':');
+      if (c < 1) return;
+      var k = ln.slice(0, c).trim().toLowerCase();
+      headers[k] = ln.slice(c + 1).trim();
+      order.push(k);
+    });
+    var bodyStart = hEnd + 4, bodyLen = 0, complete = true, chunked = false;
+    var te = (headers['transfer-encoding'] || '').toLowerCase();
+    if (te.indexOf('chunked') >= 0) {
+      chunked = true;
+      var q = bodyStart, total = 0, g2 = 0;
+      while (q < b.length && g2++ < 4000) {
+        var eol = -1;
+        for (var i = q; i + 1 < b.length; i++) if (b[i] === 13 && b[i + 1] === 10) { eol = i; break; }
+        if (eol < 0) { complete = false; break; }
+        var sz = parseInt(strAt(b, q, eol - q).split(';')[0], 16);
+        if (!(sz >= 0)) { complete = false; break; }
+        if (sz === 0) { q = eol + 2; break; }
+        total += sz;
+        q = eol + 2 + sz + 2;
+      }
+      if (q > b.length) complete = false;
+      bodyLen = total;
+      p = Math.min(q, b.length);
+    } else if (headers['content-length'] != null) {
+      bodyLen = parseInt(headers['content-length'], 10) || 0;
+      if (bodyStart + bodyLen > b.length) { complete = false; bodyLen = b.length - bodyStart; }
+      p = bodyStart + bodyLen;
+    } else if (/^HTTP\//.test(start)) {
+      bodyLen = b.length - bodyStart;
+      complete = false;
+      p = b.length;
+    } else {
+      bodyLen = 0;
+      p = bodyStart;
+    }
+
+    var m = { kind: 'http', start: bodyStart - (hEnd + 4 - p), head: start, headers: headers,
+              headerOrder: order, bodyStart: bodyStart, bodyLen: bodyLen,
+              complete: complete, chunked: chunked, response: /^HTTP\//.test(start) };
+    if (m.response) {
+      var mm = start.match(/^HTTP\/1\.[01] (\d{3})/);
+      m.status = mm ? parseInt(mm[1], 10) : null;
+      m.contentType = headers['content-type'] || null;
+    } else {
+      var rm = start.match(/^(\S+) (\S+)/);
+      m.method = rm ? rm[1] : null;
+      m.path = rm ? rm[2] : null;
+      m.host = headers['host'] || null;
+      if (headers['authorization']) m.authorization = headers['authorization'].split(' ')[0];
+      if (headers['cookie']) m.hasCookie = true;
+    }
+    var overlapped = (gaps || []).some(function (g) { return g.from < p && g.to > (bodyStart - 4); });
+    if (overlapped) { m.complete = false; m.note = 'part of this message is missing from the capture'; }
+    msgs.push(m);
+    if (p <= bodyStart - 4) break;
+  }
+  return msgs;
+}
+
+var TLS_REC = { 20: 'change cipher spec', 21: 'alert', 22: 'handshake', 23: 'application data', 24: 'heartbeat' };
+var TLS_HS = { 1: 'client hello', 2: 'server hello', 4: 'new session ticket', 8: 'encrypted extensions',
+               11: 'certificate', 12: 'server key exchange', 13: 'certificate request',
+               14: 'server hello done', 15: 'certificate verify', 16: 'client key exchange', 20: 'finished' };
+
+function decodeTlsStream(b) {
+  var msgs = [], p = 0, guard = 0, appRecords = 0, appBytes = 0;
+  while (p + 5 <= b.length && guard++ < 3000) {
+    var type = b[p], len = (b[p + 3] << 8) | b[p + 4];
+    if (!TLS_REC[type] || len === 0 || len > 18432) break;
+    var body = p + 5, avail = Math.min(len, b.length - body);
+    if (type === 23) { appRecords++; appBytes += len; }
+    else if (type === 22 && avail >= 4) {
+      var hs = b[body], hlen = (b[body + 1] << 16) | (b[body + 2] << 8) | b[body + 3];
+      msgs.push({ kind: 'tls', record: TLS_REC[type], handshake: TLS_HS[hs] || ('handshake type ' + hs),
+                  at: p, len: len, hsLen: hlen, complete: avail >= len });
+    } else {
+      msgs.push({ kind: 'tls', record: TLS_REC[type], at: p, len: len, complete: avail >= len });
+    }
+    p = body + len;
+  }
+  if (appRecords) msgs.push({ kind: 'tls', record: 'application data', records: appRecords,
+                              len: appBytes, complete: true, encrypted: true });
+  return msgs;
+}
+
+DN.streamText = function (bytes, limit) {
+  limit = limit || 64 * 1024;
+  var n = Math.min(bytes.length, limit), out = '';
+  for (var i = 0; i < n; i++) {
+    var c = bytes[i];
+    if (c === 9 || c === 10 || c === 13) out += String.fromCharCode(c);
+    else if (c >= 32 && c < 127) out += String.fromCharCode(c);
+    else out += '.';
+  }
+  return out;
+};
+
+DN.streamHex = function (bytes, limit) {
+  limit = limit || 16 * 1024;
+  var n = Math.min(bytes.length, limit), lines = [];
+  for (var i = 0; i < n; i += 16) {
+    var h = '', t = '';
+    for (var j = 0; j < 16; j++) {
+      if (i + j < n) {
+        var c = bytes[i + j];
+        h += hex2(c) + ' ';
+        t += (c >= 32 && c < 127) ? String.fromCharCode(c) : '.';
+      } else h += '   ';
+      if (j === 7) h += ' ';
+    }
+    lines.push(('0000000' + i.toString(16)).slice(-8) + '  ' + h + ' |' + t + '|');
+  }
+  return lines.join('\n');
+};
+
+/* ====================================================================
+   ANALYSIS
+   ==================================================================== */
+
+DN.convKey = function (r) {
+  if (!r.src || !r.dst) return null;
+  var tp = r.transport || r.proto;
+  var a = r.src, b = r.dst, pa = r.sport, pb = r.dport;
+  var aFirst;
+  if (pa == null) aFirst = (a <= b);
+  else aFirst = (a < b) || (a === b && pa <= pb);
+  var A = aFirst ? { h: a, p: pa } : { h: b, p: pb };
+  var B = aFirst ? { h: b, p: pb } : { h: a, p: pa };
+  return {
+    key: tp + '|' + A.h + (A.p != null ? ':' + A.p : '') + '|' + B.h + (B.p != null ? ':' + B.p : ''),
+    a: A, b: B, transport: tp, aIsSource: aFirst
+  };
+};
+
+DN.analyze = function (rows, meta) {
+  meta = meta || {};
+  var convs = new Map(), hosts = new Map(), tree = {}, ports = new Map();
+  var t0 = null, t1 = null, bytes = 0, capBytes = 0;
+  var dns = [], sni = [], httpReq = [], creds = [], arpMap = new Map();
+  var scanners = new Map(), retrans = 0, resets = 0, ooo = 0, synsSent = new Map();
+  var reasm = meta.reasm || null;
+  var segClass = (reasm && reasm.segClass) || {};
+  var aps = new Map(), ssidMap = new Map(), probes = new Map(), deauths = [];
+  var eapol = new Map(), wifiFrames = 0, badFcs = 0, encData = 0, wifiTypes = new Map();
+  var sizes = { tiny: 0, small: 0, mid: 0, big: 0, jumbo: 0 };
+  var seenSeq = new Map(), errs = 0, unhandled = 0;
+
+  function bumpTree(path) {
+    var node = tree, i;
+    for (i = 0; i < path.length; i++) {
+      var k = path[i];
+      if (!node[k]) node[k] = { _n: 0, _b: 0, kids: {} };
+      node[k]._n++;
+      node = node[k].kids;
+    }
+  }
+  function bumpTreeBytes(path, n) {
+    var node = tree, i;
+    for (i = 0; i < path.length; i++) {
+      var k = path[i];
+      if (!node[k]) node[k] = { _n: 0, _b: 0, kids: {} };
+      node[k]._b += n;
+      node = node[k].kids;
+    }
+  }
+  function host(h) {
+    if (!hosts.has(h)) hosts.set(h, { host: h, pktIn: 0, pktOut: 0, bytesIn: 0, bytesOut: 0, peers: new Set(), macs: new Set() });
+    return hosts.get(h);
+  }
+
+  for (var i = 0; i < rows.length; i++) {
+    var r = rows[i];
+    if (r.dissectError) errs++;
+    if (t0 === null || r.ts < t0) t0 = r.ts;
+    if (t1 === null || r.ts > t1) t1 = r.ts;
+    bytes += r.origlen; capBytes += r.caplen;
+
+    var n = r.origlen;
+    if (n <= 64) sizes.tiny++; else if (n <= 256) sizes.small++;
+    else if (n <= 768) sizes.mid++; else if (n <= 1514) sizes.big++; else sizes.jumbo++;
+
+    var path = r.stack.slice();
+    if (r.app) path.push(r.app.toLowerCase());
+    if (!path.length) { path = ['unhandled']; unhandled++; }
+    bumpTree(path); bumpTreeBytes(path, r.origlen);
+
+    if (r.src) {
+      var hs = host(r.src); hs.pktOut++; hs.bytesOut += r.origlen;
+      if (r.dst) hs.peers.add(r.dst);
+      if (r.macSrc) hs.macs.add(r.macSrc);
+    }
+    if (r.dst) {
+      var hd = host(r.dst); hd.pktIn++; hd.bytesIn += r.origlen;
+      if (r.src) hd.peers.add(r.src);
+    }
+
+    if (r.sport != null) {
+      var svcPort = null;
+      if (DN.WELL_KNOWN[r.dport]) svcPort = r.dport;
+      else if (DN.WELL_KNOWN[r.sport]) svcPort = r.sport;
+      else svcPort = Math.min(r.sport, r.dport);
+      var pk = (r.transport || '?') + '/' + svcPort;
+      if (!ports.has(pk)) ports.set(pk, { key: pk, transport: r.transport, port: svcPort, name: DN.WELL_KNOWN[svcPort] || '', packets: 0, bytes: 0 });
+      var pe = ports.get(pk); pe.packets++; pe.bytes += r.origlen;
+    }
+
+    var ck = DN.convKey(r);
+    if (ck) {
+      if (!convs.has(ck.key)) {
+        convs.set(ck.key, {
+          key: ck.key, transport: ck.transport,
+          aHost: ck.a.h, aPort: ck.a.p, bHost: ck.b.h, bPort: ck.b.p,
+          packets: 0, bytes: 0, aToB: 0, bToA: 0, aBytes: 0, bBytes: 0,
+          start: r.ts, end: r.ts, rows: [], apps: new Set(),
+          syn: 0, synAck: 0, rst: 0, fin: 0, retrans: 0, service: null, note: null,
+          ooo: 0, gaps: 0, streamBytes: 0, streams: null, messages: []
+        });
+      }
+      var c = convs.get(ck.key);
+      c.packets++; c.bytes += r.origlen;
+      if (r.ts < c.start) c.start = r.ts;
+      if (r.ts > c.end) c.end = r.ts;
+      var fromA = (r.src === c.aHost && (c.aPort == null || r.sport === c.aPort));
+      if (fromA) { c.aToB++; c.aBytes += r.origlen; } else { c.bToA++; c.bBytes += r.origlen; }
+      if (c.rows.length < 4000) c.rows.push({ i: r.i, ts: r.ts, fromA: fromA, len: r.origlen, info: r.info,
+        label: r.app || r.proto, flags: r.flags, retrans: false, seg: null, payloadLen: r.payloadLen || 0 });
+      if (r.app) c.apps.add(r.app);
+      if (!c.service && r.service) c.service = r.service;
+      if (r.flags) {
+        if (r.flags.indexOf('SYN') >= 0 && r.flags.indexOf('ACK') < 0) c.syn++;
+        if (r.flags.indexOf('SYN') >= 0 && r.flags.indexOf('ACK') >= 0) c.synAck++;
+        if (r.flags.indexOf('RST') >= 0) { c.rst++; resets++; }
+        if (r.flags.indexOf('FIN') >= 0) c.fin++;
+      }
+      /* the reassembly state machine has already classified this segment */
+      var cls = segClass[r.i];
+      if (cls) {
+        if (c.rows.length) { c.rows[c.rows.length - 1].seg = cls; }
+        if (cls === 'retransmission' || cls === 'fast retransmission' || cls === 'spurious retransmission') {
+          retrans++; c.retrans++;
+          if (c.rows.length) c.rows[c.rows.length - 1].retrans = true;
+        } else if (cls === 'out of order') { ooo++; c.ooo++; }
+      }
+    }
+
+    /* the air: access points, clients, and the frames they trade */
+    if (r.wifi) {
+      var w = r.wifi;
+      wifiFrames++;
+      if (w.badFcs) badFcs++;
+      if (w.encrypted) encData++;
+      wifiTypes.set(w.name || w.type, (wifiTypes.get(w.name || w.type) || 0) + 1);
+
+      if (w.bssid && w.bssid !== 'ff:ff:ff:ff:ff:ff') {
+        if (!aps.has(w.bssid)) {
+          aps.set(w.bssid, { bssid: w.bssid, ssids: new Set(), channel: null, security: null,
+                             privacy: false, beacons: 0, probeResps: 0, signals: [],
+                             clients: new Set(), band: null, firstSeen: r.ts, lastSeen: r.ts });
+        }
+        var ap = aps.get(w.bssid);
+        ap.lastSeen = r.ts;
+        if (w.ssid != null && w.ssid !== '') ap.ssids.add(w.ssid);
+        if (w.channel) ap.channel = w.channel;
+        if (w.band) ap.band = w.band;
+        if (w.security) ap.security = w.security;
+        if (w.privacy) ap.privacy = true;
+        if (typeof w.signal === 'number') ap.signals.push(w.signal);
+        if (w.subtype === 8 && w.typeCode === 0) ap.beacons++;
+        if (w.subtype === 5 && w.typeCode === 0) ap.probeResps++;
+        [w.src, w.dst].forEach(function (m) {
+          if (m && m !== w.bssid && m !== 'ff:ff:ff:ff:ff:ff') ap.clients.add(m);
+        });
+        if (w.ssid != null && w.ssid !== '') {
+          if (!ssidMap.has(w.ssid)) ssidMap.set(w.ssid, new Set());
+          ssidMap.get(w.ssid).add(w.bssid);
+        }
+      }
+
+      /* a probe request names what a client is looking for, and it does
+         that whether or not the network is anywhere nearby */
+      if (w.typeCode === 0 && w.subtype === 4 && w.src) {
+        if (!probes.has(w.src)) probes.set(w.src, new Set());
+        if (w.ssid) probes.get(w.src).add(w.ssid);
+      }
+      if (w.typeCode === 0 && (w.subtype === 12 || w.subtype === 10)) {
+        deauths.push({ ts: r.ts, kind: w.name, bssid: w.bssid, src: w.src, dst: w.dst,
+                       reason: w.reason, reasonText: w.reasonText });
+      }
+    }
+    if (r.eapol && r.eapol.message) {
+      var ek = (r.wifi && r.wifi.bssid ? r.wifi.bssid : r.dst) + '|' + (r.eapol.fromAp ? r.dst : r.src);
+      if (!eapol.has(ek)) eapol.set(ek, new Set());
+      eapol.get(ek).add(r.eapol.message);
+    }
+
+    /* observations that feed the written findings */
+    if (r.dns && r.dns.questions && r.dns.questions.length) {
+      dns.push({ ts: r.ts, qr: r.dns.qr, name: r.dns.questions[0].name, type: r.dns.questions[0].type,
+                 rcode: r.dns.rcode, answers: (r.dns.answers || []).map(function (a) { return a.value; }).filter(Boolean),
+                 client: r.dns.qr ? r.dst : r.src });
+    }
+    if (r.tls && r.tls.sni) sni.push({ ts: r.ts, name: r.tls.sni, client: r.src, server: r.dst });
+    if (r.http && r.http.isRequest && !segClass[r.i]) httpReq.push({ ts: r.ts, method: r.http.method, host: r.http.host, path: r.http.path, client: r.src, server: r.dst });
+    if (r.credentialRisk) creds.push({ ts: r.ts, kind: r.credentialRisk, src: r.src, dst: r.dst, port: r.dport });
+    if (r.arp) {
+      if (!arpMap.has(r.arp.spa)) arpMap.set(r.arp.spa, new Set());
+      arpMap.get(r.arp.spa).add(r.arp.sha);
+    }
+    if (r.flags && r.flags.indexOf('SYN') >= 0 && r.flags.indexOf('ACK') < 0) {
+      if (!scanners.has(r.src)) scanners.set(r.src, { targets: new Set(), ports: new Set(), count: 0 });
+      var sc = scanners.get(r.src);
+      sc.targets.add(r.dst); sc.ports.add(r.dst + ':' + r.dport); sc.count++;
+      var sy = r.src + '>' + r.dst + ':' + r.dport;
+      if (!synsSent.has(sy)) synsSent.set(sy, { answered: false });
+    }
+    if (r.flags && r.flags.indexOf('SYN') >= 0 && r.flags.indexOf('ACK') >= 0) {
+      var back = r.dst + '>' + r.src + ':' + r.sport;
+      if (synsSent.has(back)) synsSent.get(back).answered = true;
+    }
+    if (r.flags && r.flags.indexOf('RST') >= 0) {
+      var back2 = r.dst + '>' + r.src + ':' + r.sport;
+      if (synsSent.has(back2)) synsSent.get(back2).refused = true;
+    }
+  }
+
+  var convList = Array.from(convs.values());
+  convList.forEach(function (c) {
+    c.duration = (c.end - c.start) / 1000;
+    c.appList = Array.from(c.apps);
+    c.label = c.appList[0] || c.service || DN.WELL_KNOWN[c.bPort] || DN.WELL_KNOWN[c.aPort] || c.transport;
+    if (c.transport === 'TCP') {
+      if (c.syn && !c.synAck && c.rst) c.state = 'refused';
+      else if (c.syn && !c.synAck && !c.rst) c.state = 'no answer';
+      else if (c.synAck && c.fin) c.state = 'closed';
+      else if (c.synAck && c.rst) c.state = 'reset';
+      else if (c.synAck) c.state = 'open';
+      else c.state = 'in progress';
+    } else c.state = '';
+
+    /* hang the rebuilt streams on the conversation and read what they say */
+    if (reasm && reasm.flows.has(c.key)) {
+      var fl = reasm.flows.get(c.key);
+      c.streams = { a: fl.a, b: fl.b };
+      c.streamBytes = fl.a.bytes + fl.b.bytes;
+      c.gaps = fl.a.gaps.length + fl.b.gaps.length;
+      ['a', 'b'].forEach(function (side) {
+        var d = fl[side];
+        var from = side === 'a' ? c.aHost : c.bHost, to = side === 'a' ? c.bHost : c.aHost;
+        (d.messages || []).forEach(function (m) {
+          m.from = from; m.to = to; m.side = side;
+          c.messages.push(m);
+          if (m.kind === 'http' && !m.response && m.method) {
+            httpReq.push({ ts: c.start, method: m.method, host: m.host || to, path: m.path,
+                           client: from, server: to, reassembled: true,
+                           complete: m.complete, bodyLen: m.bodyLen });
+            if (m.authorization) {
+              creds.push({ ts: c.start, kind: 'HTTP ' + m.authorization + ' credentials in a rebuilt request',
+                           src: from, dst: to, port: side === 'a' ? c.bPort : c.aPort });
+            }
+          }
+        });
+      });
+    }
+  });
+  convList.sort(function (x, y) { return y.bytes - x.bytes; });
+
+  var hostList = Array.from(hosts.values());
+  hostList.forEach(function (h) { h.packets = h.pktIn + h.pktOut; h.bytes = h.bytesIn + h.bytesOut; h.peerCount = h.peers.size; });
+  hostList.sort(function (x, y) { return y.bytes - x.bytes; });
+
+  var unanswered = 0, refused = 0;
+  synsSent.forEach(function (v) { if (!v.answered) { if (v.refused) refused++; else unanswered++; } });
+
+  return {
+    meta: meta,
+    packets: rows.length, bytes: bytes, capturedBytes: capBytes,
+    start: t0, end: t1, span: (t1 - t0) / 1000,
+    convs: convList, hosts: hostList, tree: tree,
+    ports: Array.from(ports.values()).sort(function (a, b) { return b.bytes - a.bytes; }),
+    sizes: sizes, dns: dns, sni: sni, http: httpReq, creds: creds,
+    arpMap: arpMap, scanners: scanners,
+    retrans: retrans, resets: resets, outOfOrder: ooo,
+    unansweredSyns: unanswered, refusedSyns: refused,
+    reasm: reasm ? reasm.totals : null,
+    defrag: meta.defrag || null,
+    wifi: wifiFrames ? {
+      frames: wifiFrames, badFcs: badFcs, encryptedData: encData,
+      types: wifiTypes,
+      aps: Array.from(aps.values()).map(function (a) {
+        a.ssidList = Array.from(a.ssids);
+        a.clientCount = a.clients.size;
+        a.avgSignal = a.signals.length ? Math.round(a.signals.reduce(function (x, y) { return x + y; }, 0) / a.signals.length) : null;
+        return a;
+      }).sort(function (x, y) { return y.beacons - x.beacons; }),
+      ssidMap: ssidMap, probes: probes, deauths: deauths, eapol: eapol
+    } : null,
+    dissectErrors: errs, unhandled: unhandled
+  };
+};
+
+/* ====================================================================
+   FINDINGS: the plain language pass
+   ==================================================================== */
+
+function topN(map, n) {
+  return Array.from(map.entries()).sort(function (a, b) { return b[1] - a[1]; }).slice(0, n);
+}
+function countBy(list, fn) {
+  var m = new Map();
+  list.forEach(function (x) { var k = fn(x); if (k) m.set(k, (m.get(k) || 0) + 1); });
+  return m;
+}
+function plural(n, one, many) { return n + ' ' + (n === 1 ? one : (many || one + 's')); }
+function agree(n, one, many) { return n === 1 ? one : many; }
+DN.plural = plural;
+
+DN.findings = function (A) {
+  var out = [], brief = [];
+
+  /* -- the opening paragraph ---------------------------------------- */
+  if (!A.packets) {
+    return { brief: ['Nothing is inside the net. Widen it on the drag bar, or open a different capture.'], items: [] };
+  }
+  var when = A.start ? DN.stamp(A.start) : 'an unrecorded time';
+  brief.push('This slice holds ' + plural(A.packets, 'packet') + ' carrying ' + DN.bytesHuman(A.bytes) +
+    ', starting at ' + when + ' and running for ' + DN.secs(A.span) + '. ' +
+    plural(A.hosts.length, 'address', 'addresses') + agree(A.hosts.length, ' appears', ' appear') + ', talking in ' + plural(A.convs.length, 'conversation') + '.');
+
+  var busiest = A.hosts[0];
+  if (busiest) {
+    brief.push('The busiest address is ' + busiest.host + ' with ' + DN.bytesHuman(busiest.bytes) +
+      ' across ' + plural(busiest.packets, 'packet') + ' and ' + plural(busiest.peerCount, 'peer') + '.');
+  }
+
+  /* what the traffic was for */
+  var doing = [];
+  var sniNames = countBy(A.sni, function (x) { return x.name; });
+  var httpHosts = countBy(A.http, function (x) { return x.host; });
+  var dnsNames = countBy(A.dns.filter(function (d) { return !d.qr; }), function (x) { return x.name; });
+  if (sniNames.size) doing.push('encrypted sessions to ' + plural(sniNames.size, 'named host'));
+  if (httpHosts.size) doing.push('cleartext web requests to ' + plural(httpHosts.size, 'host'));
+  if (dnsNames.size) doing.push(plural(dnsNames.size, 'name') + ' looked up in DNS');
+  if (doing.length) brief.push('Reading the payloads that were not encrypted: ' + doing.join(', ') + '.');
+
+  var stateCounts = countBy(A.convs.filter(function (c) { return c.transport === 'TCP'; }), function (c) { return c.state; });
+  if (stateCounts.size) {
+    var bits = Array.from(stateCounts.entries()).map(function (e) { return e[1] + ' ' + e[0]; });
+    brief.push('TCP conversations break down as ' + bits.join(', ') + '.');
+  }
+
+  /* -- itemised findings -------------------------------------------- */
+  function add(sev, tag, title, text) { out.push({ severity: sev, tag: tag, title: title, text: text }); }
+
+  /* names */
+  if (sniNames.size) {
+    add('note', 'destinations', 'Encrypted destinations were named in the clear',
+      'TLS carries the destination hostname in the client hello before encryption starts, so the sites are visible even though the contents are not. Most contacted: ' +
+      topN(sniNames, 6).map(function (e) { return e[0] + ' (' + e[1] + ')'; }).join(', ') + '.');
+  }
+  if (httpHosts.size) {
+    var meths = countBy(A.http, function (x) { return x.method; });
+    add('watch', 'cleartext web', 'Plain HTTP was used',
+      plural(A.http.length, 'request') + ' went out over unencrypted HTTP (' +
+      Array.from(meths.entries()).map(function (e) { return e[1] + ' ' + e[0]; }).join(', ') + '). Anyone on the path could read the URLs, headers and bodies. Hosts: ' +
+      topN(httpHosts, 6).map(function (e) { return e[0]; }).join(', ') + '.');
+  }
+  if (dnsNames.size) {
+    var failed = A.dns.filter(function (d) { return d.qr && d.rcode === 3; });
+    add('note', 'name lookups', plural(dnsNames.size, 'name') + agree(dnsNames.size, ' was', ' were') + ' looked up',
+      'Most asked: ' + topN(dnsNames, 8).map(function (e) { return e[0]; }).join(', ') + '.' +
+      (failed.length ? ' ' + plural(failed.length, 'lookup') + ' came back with no such name, which usually means a typo, a dead service, or software reaching for something that is not there.' : ''));
+  }
+
+  /* credentials */
+  if (A.creds.length) {
+    var kinds = countBy(A.creds, function (c) { return c.kind; });
+    add('flag', 'exposure', 'Credentials crossed the wire without encryption',
+      plural(A.creds.length, 'packet') + ' carried a login attempt over a protocol with no transport encryption (' +
+      Array.from(kinds.keys()).join(', ') + '). Treat any account used here as disclosed and rotate it.');
+  }
+  var ctConvs = A.convs.filter(function (c) {
+    return c.transport === 'TCP' && (DN.CLEARTEXT_PORTS[c.aPort] || DN.CLEARTEXT_PORTS[c.bPort]) && c.packets > 2;
+  });
+  if (ctConvs.length && !A.creds.length) {
+    var names = {};
+    ctConvs.forEach(function (c) { var k = DN.CLEARTEXT_PORTS[c.bPort] || DN.CLEARTEXT_PORTS[c.aPort]; names[k] = 1; });
+    add('watch', 'exposure', 'Protocols with no encryption were in use',
+      plural(ctConvs.length, 'conversation') + ' used ' + Object.keys(names).join(', ') +
+      '. No credentials were caught in this slice, but these protocols offer no confidentiality at all.');
+  }
+
+  /* scanning behaviour */
+  var scanFindings = [];
+  A.scanners.forEach(function (v, src) {
+    if (v.targets.size >= 10) scanFindings.push({ src: src, kind: 'host sweep', n: v.targets.size, ports: v.ports.size });
+    else if (v.ports.size >= 15) scanFindings.push({ src: src, kind: 'port sweep', n: v.ports.size, ports: v.ports.size });
+  });
+  if (scanFindings.length) {
+    add('flag', 'reconnaissance', 'Something was sweeping',
+      scanFindings.map(function (s) {
+        return s.src + ' opened ' + plural(s.ports, 'connection attempt') + ' across ' +
+          plural(s.n, s.kind === 'host sweep' ? 'address' : 'port') + ' in this window, which is the shape of a ' + s.kind + '.';
+      }).join(' ') + ' Vulnerability scanners, asset inventory agents and malware all look like this, so match it against what you expect to be running.');
+  }
+  if (A.unansweredSyns >= 5) {
+    add('watch', 'unanswered', plural(A.unansweredSyns, 'connection attempt') + ' got no answer',
+      'A SYN went out and nothing came back. That points at a filtered port, a host that is off, or a route that does not reach.');
+  }
+  if (A.refusedSyns >= 3) {
+    add('note', 'refused', plural(A.refusedSyns, 'connection attempt') + agree(A.refusedSyns, ' was', ' were') + ' refused outright',
+      'The target answered with RST, meaning it was reachable but nothing was listening on that port.');
+  }
+
+  /* health */
+  var R = A.reasm;
+  if (A.retrans > 0) {
+    var denom = (R && R.streams) ? Math.max(1, R.retrans + R.streams) : Math.max(1, A.packets);
+    var pct = (A.retrans / Math.max(1, A.packets) * 100);
+    var kinds = [];
+    if (R) {
+      if (R.fastRetrans) kinds.push(R.fastRetrans + ' were fast retransmissions, sent after the far end asked three times for the same byte');
+      if (R.spurious) kinds.push(R.spurious + ' were spurious, covering data the far end had already acknowledged');
+      if (R.retrans - R.fastRetrans - R.spurious > 0) kinds.push((R.retrans - R.fastRetrans - R.spurious) + ' were ordinary timeout retransmissions');
+    }
+    add(pct > 3 ? 'watch' : 'note', 'link health', plural(A.retrans, 'segment') + agree(A.retrans, ' was', ' were') + ' sent again',
+      'That is ' + pct.toFixed(1) + ' percent of the slice. Retransmission above roughly three percent usually means real loss: a saturated link, a bad cable or radio path, or an overloaded middlebox.' +
+      (kinds.length ? ' Broken down: ' + kinds.join('; ') + '. A spurious retransmission points at a timer set too tight rather than at loss.' : ''));
+  }
+  if (A.outOfOrder > 0) {
+    add(A.outOfOrder > A.retrans ? 'watch' : 'note', 'link health', plural(A.outOfOrder, 'segment') + ' arrived out of order',
+      'These landed past a hole that had not been filled yet, so they were held until the missing bytes turned up. Reordering usually comes from traffic taking more than one path, from link aggregation hashing badly, or from a device that queues per flow. It is not loss, and treating it as loss is the usual reason a capture reads worse than the link actually is.');
+  }
+  if (R && R.gaps > 0) {
+    add('note', 'reader honesty', plural(R.gaps, 'hole') + agree(R.gaps, ' remains', ' remain') + ' in the rebuilt streams',
+      'Some bytes were never captured, so the streams below them are shown with the missing ranges marked rather than closed up. This is normally a capture problem, not a network problem: a tap that dropped frames, a snap length that cut them short, or a capture that started mid conversation.');
+  }
+  if (A.defrag && A.defrag.datagrams) {
+    add('note', 'reassembly', plural(A.defrag.datagrams, 'datagram') + agree(A.defrag.datagrams, ' was', ' were') + ' rebuilt from IP fragments',
+      plural(A.defrag.fragments, 'fragment') + agree(A.defrag.fragments, ' was', ' were') + ' seen in this slice.' +
+      (A.defrag.incomplete ? ' ' + plural(A.defrag.incomplete, 'group') + ' could not be completed and were left alone rather than guessed at.' : '') +
+      ' Fragmentation at this point usually means a path MTU smaller than the sender assumes, often a tunnel.');
+  }
+  if (R && R.truncated) {
+    add('note', 'reader honesty', 'Some streams hit the size ceiling',
+      plural(R.truncated, 'segment') + agree(R.truncated, ' was', ' were') + ' dropped from the rebuilt streams because a single direction passed the four megabyte limit this reader holds in memory. Counts and findings still cover every packet; only the byte view is short.');
+  }
+  if (A.resets >= 5) {
+    add('note', 'link health', plural(A.resets, 'reset') + agree(A.resets, ' was', ' were') + ' sent',
+      'RST ends a connection abruptly. A handful is normal. A steady stream points at an application dropping sessions, a firewall cutting them, or a scan being turned away.');
+  }
+
+  /* ---- the air ----------------------------------------------------- */
+  var Wf = A.wifi;
+  if (Wf) {
+    var named = Wf.aps.filter(function (a) { return a.ssidList.length; });
+    add('note', 'the air', plural(Wf.aps.length, 'access point') + agree(Wf.aps.length, ' was', ' were') + ' heard',
+      (named.length ? 'Named: ' + named.slice(0, 8).map(function (a) {
+        return a.ssidList[0] + ' on ' + a.bssid + (a.channel ? ' channel ' + a.channel : '') +
+               (a.avgSignal != null ? ' at ' + a.avgSignal + ' dBm' : '');
+      }).join('; ') + '. ' : '') +
+      plural(Wf.frames, 'frame') + ' of 802.11 traffic in this slice' +
+      (Wf.badFcs ? ', of which ' + Wf.badFcs + ' failed their checksum and are probably reception errors rather than real frames' : '') + '.');
+
+    /* one name, two radios: the signature of an impersonating access point */
+    var dupes = [];
+    Wf.ssidMap.forEach(function (set, ssid) { if (set.size > 1) dupes.push({ ssid: ssid, bssids: Array.from(set) }); });
+    if (dupes.length) {
+      add('flag', 'the air', plural(dupes.length, 'network name') + agree(dupes.length, ' was', ' were') + ' advertised by more than one radio',
+        dupes.slice(0, 5).map(function (d) { return '"' + d.ssid + '" from ' + d.bssids.join(' and '); }).join('; ') +
+        '. This is what an impersonating access point looks like, and it is also what a perfectly ordinary multi radio deployment looks like. ' +
+        'Check the hardware addresses against your own equipment list before treating it as an attack: a mesh or a controller managed estate will do this all day long.');
+    }
+
+    var open = Wf.aps.filter(function (a) { return a.beacons && !a.privacy && !a.security; });
+    if (open.length) {
+      add('watch', 'the air', plural(open.length, 'network') + agree(open.length, ' was', ' were') + ' advertised with no encryption',
+        open.slice(0, 8).map(function (a) { return (a.ssidList[0] || a.bssid); }).join(', ') +
+        '. Anything a client sends over these is readable by anyone in range with a radio, including this reader.');
+    }
+    var wep = Wf.aps.filter(function (a) { return a.privacy && (!a.security || /WEP/.test(a.security)); });
+    if (wep.length) {
+      add('flag', 'the air', plural(wep.length, 'network') + agree(wep.length, ' appears', ' appear') + ' to be using WEP',
+        wep.slice(0, 8).map(function (a) { return (a.ssidList[0] || a.bssid); }).join(', ') +
+        '. WEP has been broken since the early 2000s and its key can be recovered from captured traffic alone. Treat these as open networks carrying a false sense of safety.');
+    }
+    var tkip = Wf.aps.filter(function (a) { return a.security && /TKIP/.test(a.security); });
+    if (tkip.length) {
+      add('watch', 'the air', plural(tkip.length, 'network') + agree(tkip.length, ' still offers', ' still offer') + ' TKIP',
+        tkip.slice(0, 6).map(function (a) { return (a.ssidList[0] || a.bssid); }).join(', ') +
+        '. TKIP exists for compatibility with equipment from before 2004 and holds the whole network back to weaker protection.');
+    }
+    var hidden = Wf.aps.filter(function (a) { return a.beacons && !a.ssidList.length; });
+    if (hidden.length) {
+      add('note', 'the air', plural(hidden.length, 'access point') + agree(hidden.length, ' beacons', ' beacon') + ' without a name',
+        'A hidden network is still visible as a radio, and its name appears the moment a client that knows it associates or probes for it. Hiding a name is not a security control, though it is often sold as one.');
+    }
+
+    /* deauthentication */
+    if (Wf.deauths.length) {
+      var byBss = countBy(Wf.deauths, function (d) { return d.bssid || d.src; });
+      var worst = topN(byBss, 1)[0];
+      var span = Math.max(0.001, A.span);
+      var rate = Wf.deauths.length / span;
+      var flood = Wf.deauths.length >= 20 && rate > 1;
+      var reasons = countBy(Wf.deauths, function (d) { return d.reasonText; });
+      add(flood ? 'flag' : 'note', 'the air',
+        plural(Wf.deauths.length, 'deauthentication or disassociation frame') + agree(Wf.deauths.length, ' was', ' were') + ' sent',
+        (flood
+          ? 'That is about ' + rate.toFixed(1) + ' per second, which is well past what a healthy network produces. A sustained burst of these is the classic way to knock clients off a network, either to cause an outage or to force a reconnection so the handshake can be captured. '
+          : 'This is within the range a normal network produces as clients roam and idle out. ') +
+        (worst ? 'Most came from ' + worst[0] + ' (' + worst[1] + ').' : '') +
+        (reasons.size ? ' Reasons given: ' + topN(reasons, 4).map(function (e) { return e[0] + ' (' + e[1] + ')'; }).join(', ') + '.' : '') +
+        ' Note that these frames are unauthenticated on any network without management frame protection, so the sender named in them proves nothing.');
+    }
+
+    /* four way handshakes */
+    var full = 0, partial = 0;
+    Wf.eapol.forEach(function (set) { if (set.size >= 4) full++; else partial++; });
+    if (full || partial) {
+      add(full ? 'watch' : 'note', 'the air',
+        (full ? plural(full, 'complete four way handshake') + agree(full, ' was', ' were') + ' captured' : 'Part of a four way handshake was captured'),
+        (full ? 'A complete handshake plus the network name is the input an offline password guessing attack needs. It does not hand anyone the key, but it does mean the strength of the passphrase is now the only thing standing in the way, and the guessing happens on the attacker\'s own machine where nobody can see it. If this capture is going anywhere, treat it as sensitive. '
+              : 'Only part of the exchange was seen, which is not enough for offline guessing. ') +
+        (partial ? plural(partial, 'other exchange') + agree(partial, ' was', ' were') + ' incomplete.' : ''));
+    }
+
+    /* probe requests */
+    var talkers = [];
+    Wf.probes.forEach(function (set, mac) { if (set.size) talkers.push({ mac: mac, ssids: Array.from(set) }); });
+    talkers.sort(function (x, y) { return y.ssids.length - x.ssids.length; });
+    if (talkers.length) {
+      add('watch', 'the air', plural(talkers.length, 'device') + agree(talkers.length, ' named a network it was', ' named networks they were') + ' looking for',
+        'A probe request carries the name of a network the device has joined before, so a device broadcasts a partial history of where it has been. ' +
+        talkers.slice(0, 4).map(function (t) {
+          return t.mac + ' asked for ' + t.ssids.slice(0, 5).map(function (x) { return '"' + x + '"'; }).join(', ');
+        }).join('; ') + '. ' +
+        'Two things follow: those devices can be tracked between locations by the set of names they call out, and any of those names can be answered by an access point that simply agrees to be it. Modern phones randomise their hardware address and mostly stop doing this, so a device still naming networks is usually older, or a laptop, or something embedded.');
+    }
+    if (Wf.encryptedData) {
+      add('note', 'the air', plural(Wf.encryptedData, 'data frame') + agree(Wf.encryptedData, ' was', ' were') + ' encrypted on the air',
+        'Their contents are not readable here and this reader does not attempt to decrypt them. What remains visible is the shape of the traffic: who talked to whom, how much, how often, and when.');
+    }
+  }
+
+  /* ARP and address conflicts */
+  var conflicts = [];
+  A.arpMap.forEach(function (macs, ip) { if (macs.size > 1) conflicts.push({ ip: ip, macs: Array.from(macs) }); });
+  if (conflicts.length) {
+    add('flag', 'layer 2', 'One address claimed by more than one machine',
+      conflicts.map(function (c) { return c.ip + ' was announced by ' + c.macs.join(' and '); }).join('; ') +
+      '. That is either an address conflict, a failover pair mid switch, or ARP spoofing. Check the hardware addresses against the equipment you own.');
+  }
+
+  /* chatter */
+  var chatter = A.ports.filter(function (p) {
+    return p.port === 5353 || p.port === 1900 || p.port === 137 || p.port === 138 || p.port === 5355;
+  });
+  if (chatter.length) {
+    var cn = chatter.reduce(function (s, p) { return s + p.packets; }, 0);
+    add('note', 'background', 'Discovery chatter is present',
+      plural(cn, 'packet') + ' of mDNS, SSDP or NetBIOS. This is normal on any network with printers, phones and media devices, but it also advertises hostnames and services to everyone in the broadcast domain.');
+  }
+
+  /* nothing to say */
+  if (!out.length) {
+    add('good', 'clean', 'Nothing stood out',
+      'No cleartext credentials, no sweeping, no address conflicts and no unusual loss in this slice. That is not a clean bill of health, only the absence of the things Dragnet knows how to look for.');
+  }
+
+  /* truncation and parsing honesty */
+  if (A.dissectErrors) {
+    add('note', 'reader', plural(A.dissectErrors, 'packet') + ' broke the dissector',
+      'Those packets are counted in the totals but their contents were not read. Malformed frames, unusual encapsulation and snaplen cuts all do this.');
+  }
+  if (A.unhandled > A.packets * 0.2) {
+    add('watch', 'reader', 'A large share of this capture was not dissected',
+      plural(A.unhandled, 'packet') + ' fell through every decoder. Check the link type: Dragnet reads Ethernet, raw IP, Linux cooked and BSD loopback captures.');
+  }
+
+  var order = { flag: 0, watch: 1, note: 2, good: 3 };
+  out.sort(function (a, b) { return order[a.severity] - order[b.severity]; });
+  return { brief: brief, items: out };
+};
+
+global.DRAGNET = DN;
+})(typeof window !== 'undefined' ? window : globalThis);
+
+/* ====================================================================
+   FIXTURES AND SELF TEST  (pure, runs without a DOM)
+   ==================================================================== */
+(function (global) {
+'use strict';
+var DN = global.DRAGNET;
+
+function W(bytes) { return new Uint8Array(bytes); }
+function be16(n) { return [(n >> 8) & 255, n & 255]; }
+function be32(n) { return [(n >>> 24) & 255, (n >>> 16) & 255, (n >>> 8) & 255, n & 255]; }
+function le32(n) { return [n & 255, (n >>> 8) & 255, (n >>> 16) & 255, (n >>> 24) & 255]; }
+function le16(n) { return [n & 255, (n >> 8) & 255]; }
+function macB(s) { return s.split(':').map(function (x) { return parseInt(x, 16); }); }
+function ipB(s) { return s.split('.').map(function (x) { return parseInt(x, 10); }); }
+function strB(s) { var a = []; for (var i = 0; i < s.length; i++) a.push(s.charCodeAt(i) & 255); return a; }
+
+/* -- frame builders -------------------------------------------------- */
+function eth(src, dst, type, payload) {
+  return macB(dst).concat(macB(src), be16(type), payload);
+}
+function ip4(src, dst, proto, payload) {
+  var total = 20 + payload.length;
+  var h = [0x45, 0].concat(be16(total), be16(0x1234), [0x40, 0], [64, proto], be16(0), ipB(src), ipB(dst));
+  return h.concat(payload);
+}
+function tcp(sport, dport, seq, ack, flags, payload) {
+  payload = payload || [];
+  return be16(sport).concat(be16(dport), be32(seq), be32(ack), [0x50, flags], be16(65535), be16(0), be16(0), payload);
+}
+function udp(sport, dport, payload) {
+  return be16(sport).concat(be16(dport), be16(8 + payload.length), be16(0), payload);
+}
+function dnsQuery(id, name, qr, answerIp) {
+  var labels = [];
+  name.split('.').forEach(function (l) { labels.push(l.length); labels = labels.concat(strB(l)); });
+  labels.push(0);
+  var flags = qr ? 0x8180 : 0x0100;
+  var body = be16(id).concat(be16(flags), be16(1), be16(qr ? 1 : 0), be16(0), be16(0), labels, be16(1), be16(1));
+  if (qr) {
+    body = body.concat([0xc0, 0x0c], be16(1), be16(1), be32(60), be16(4), ipB(answerIp));
+  }
+  return body;
+}
+function tlsClientHello(sni) {
+  var host = strB(sni);
+  var sniExt = be16(host.length + 3).concat([0], be16(host.length), host);
+  var ext = be16(0).concat(be16(sniExt.length), sniExt);
+  var body = be16(0x0303).concat(new Array(32).fill(0), [0], be16(2), [0x13, 0x01], [1, 0], be16(ext.length), ext);
+  var hs = [1].concat([0, (body.length >> 8) & 255, body.length & 255], body);
+  return [0x16, 3, 1].concat(be16(hs.length), hs);
+}
+function arpReq(sha, spa, tpa) {
+  return be16(1).concat(be16(0x0800), [6, 4], be16(1), macB(sha), ipB(spa), macB('00:00:00:00:00:00'), ipB(tpa));
+}
+function arpReply(sha, spa, tha, tpa) {
+  return be16(1).concat(be16(0x0800), [6, 4], be16(2), macB(sha), ipB(spa), macB(tha), ipB(tpa));
+}
+
+/* -- pcap writer ------------------------------------------------------ */
+function writePcap(frames, opts) {
+  opts = opts || {};
+  var le = opts.le !== false;
+  var out = [];
+  var magic = le ? [0xd4, 0xc3, 0xb2, 0xa1] : [0xa1, 0xb2, 0xc3, 0xd4];
+  out = out.concat(magic);
+  out = out.concat(le ? le16(2) : be16(2), le ? le16(4) : be16(4));
+  out = out.concat(le ? le32(0) : be32(0), le ? le32(0) : be32(0));
+  out = out.concat(le ? le32(262144) : be32(262144), le ? le32(opts.linktype != null ? opts.linktype : 1) : be32(opts.linktype != null ? opts.linktype : 1));
+  frames.forEach(function (f) {
+    var sec = f.sec, usec = f.usec || 0, d = f.data;
+    out = out.concat(le ? le32(sec) : be32(sec), le ? le32(usec) : be32(usec));
+    out = out.concat(le ? le32(d.length) : be32(d.length), le ? le32(d.length) : be32(d.length));
+    out = out.concat(d);
+  });
+  return W(out).buffer;
+}
+
+function writePcapng(frames, linktype) {
+  var out = [];
+  function block(type, body) {
+    var pad = (4 - (body.length % 4)) % 4;
+    var len = 12 + body.length + pad;
+    return le32(type).concat(le32(len), body, new Array(pad).fill(0), le32(len));
+  }
+  out = out.concat(block(0x0a0d0d0a, le32(0x1a2b3c4d).concat(le16(1), le16(0), le32(0xffffffff), le32(0xffffffff))));
+  /* IDB with if_tsresol = 6 */
+  var idbOpts = le16(9).concat(le16(1), [6, 0, 0, 0], le16(0), le16(0));
+  out = out.concat(block(0x00000001, le16(linktype == null ? 1 : linktype).concat(le16(0), le32(262144), idbOpts)));
+  frames.forEach(function (f) {
+    var ticks = f.sec * 1000000 + (f.usec || 0);
+    var hi = Math.floor(ticks / 4294967296), lo = ticks >>> 0;
+    var pad = (4 - (f.data.length % 4)) % 4;
+    out = out.concat(block(0x00000006,
+      le32(0).concat(le32(hi), le32(lo), le32(f.data.length), le32(f.data.length), f.data, new Array(pad).fill(0))));
+  });
+  return W(out).buffer;
+}
+
+/* -- the sample capture ---------------------------------------------- */
+DN.sampleCapture = function () {
+  var CL = '10.0.7.42', GW = '10.0.7.1', DNS = '10.0.7.1', WEB = '93.184.216.34', OLD = '10.0.7.60';
+  var MC = '52:54:00:aa:bb:cc', MG = '52:54:00:11:22:33', MO = '52:54:00:de:ad:01', MX = '52:54:00:99:99:99';
+  var f = [], t = 1750000000, u = 0;
+  function push(sec, usec, frame) { f.push({ sec: sec, usec: usec, data: frame }); }
+
+  push(t, 1000, eth(MC, 'ff:ff:ff:ff:ff:ff', 0x0806, arpReq(MC, CL, GW)));
+  push(t, 3200, eth(MG, MC, 0x0806, arpReply(MG, GW, MC, CL)));
+
+  push(t, 12000, eth(MC, MG, 0x0800, ip4(CL, DNS, 17, udp(51344, 53, dnsQuery(0x1a2b, 'example.com', 0)))));
+  push(t, 31000, eth(MG, MC, 0x0800, ip4(DNS, CL, 17, udp(53, 51344, dnsQuery(0x1a2b, 'example.com', 1, WEB)))));
+  push(t, 33000, eth(MC, MG, 0x0800, ip4(CL, DNS, 17, udp(51345, 53, dnsQuery(0x1a2c, 'telemetry.vendor.net', 0)))));
+  push(t, 55000, eth(MG, MC, 0x0800, ip4(DNS, CL, 17, udp(53, 51345, dnsQuery(0x1a2c, 'telemetry.vendor.net', 1, '203.0.113.9')))));
+
+  /* TLS session to the web host */
+  push(t, 60000, eth(MC, MG, 0x0800, ip4(CL, WEB, 6, tcp(49312, 443, 1000, 0, 0x02))));
+  push(t, 78000, eth(MG, MC, 0x0800, ip4(WEB, CL, 6, tcp(443, 49312, 5000, 1001, 0x12))));
+  push(t, 78500, eth(MC, MG, 0x0800, ip4(CL, WEB, 6, tcp(49312, 443, 1001, 5001, 0x10))));
+  push(t, 79000, eth(MC, MG, 0x0800, ip4(CL, WEB, 6, tcp(49312, 443, 1001, 5001, 0x18, tlsClientHello('www.example.com')))));
+  push(t, 98000, eth(MG, MC, 0x0800, ip4(WEB, CL, 6, tcp(443, 49312, 5001, 1400, 0x18, [0x16, 3, 3, 0, 4, 2, 0, 0, 0]))));
+  push(t + 1, 5000, eth(MC, MG, 0x0800, ip4(CL, WEB, 6, tcp(49312, 443, 1400, 5010, 0x11))));
+  push(t + 1, 22000, eth(MG, MC, 0x0800, ip4(WEB, CL, 6, tcp(443, 49312, 5010, 1401, 0x11))));
+
+  /* cleartext HTTP with basic auth to an old box */
+  var req = strB('GET /admin/status HTTP/1.1\r\nHost: printer.lan\r\nAuthorization: Basic YWRtaW46YWRtaW4=\r\nUser-Agent: dragnet-sample/1.0\r\n\r\n');
+  push(t + 2, 1000, eth(MC, MO, 0x0800, ip4(CL, OLD, 6, tcp(49380, 80, 2000, 0, 0x02))));
+  push(t + 2, 3000, eth(MO, MC, 0x0800, ip4(OLD, CL, 6, tcp(80, 49380, 9000, 2001, 0x12))));
+  push(t + 2, 3500, eth(MC, MO, 0x0800, ip4(CL, OLD, 6, tcp(49380, 80, 2001, 9001, 0x18, req))));
+  var resp = strB('HTTP/1.1 200 OK\r\nServer: lighttpd/1.4\r\nContent-Type: text/html\r\n\r\n<html>ok</html>');
+  push(t + 2, 41000, eth(MO, MC, 0x0800, ip4(OLD, CL, 6, tcp(80, 49380, 9001, 2001 + req.length, 0x18, resp))));
+  /* a retransmission of that same response */
+  push(t + 2, 340000, eth(MO, MC, 0x0800, ip4(OLD, CL, 6, tcp(80, 49380, 9001, 2001 + req.length, 0x18, resp))));
+
+  /* a sweep from an unexpected host */
+  var SCAN = '10.0.7.201';
+  var scanPorts = [21, 22, 23, 25, 53, 80, 110, 135, 139, 143, 443, 445, 993, 995, 1433, 3306, 3389, 5900, 8080, 8443];
+  scanPorts.forEach(function (p, k) {
+    push(t + 4, 1000 + k * 900, eth(MX, MO, 0x0800, ip4(SCAN, OLD, 6, tcp(40000 + k, p, 7000 + k, 0, 0x02))));
+    if (p === 80 || p === 22) {
+      push(t + 4, 1400 + k * 900, eth(MO, MX, 0x0800, ip4(OLD, SCAN, 6, tcp(p, 40000 + k, 8000 + k, 7001 + k, 0x12))));
+    } else if (k % 3 === 0) {
+      push(t + 4, 1400 + k * 900, eth(MO, MX, 0x0800, ip4(OLD, SCAN, 6, tcp(p, 40000 + k, 0, 7001 + k, 0x14))));
+    }
+  });
+
+  /* mDNS chatter and an ARP conflict */
+  push(t + 5, 10000, eth(MC, '01:00:5e:00:00:fb', 0x0800, ip4(CL, '224.0.0.251', 17, udp(5353, 5353, dnsQuery(0, 'kitchen-speaker.local', 0)))));
+  push(t + 5, 210000, eth(MO, '01:00:5e:00:00:fb', 0x0800, ip4(OLD, '224.0.0.251', 17, udp(5353, 5353, dnsQuery(0, 'printer.local', 0)))));
+  push(t + 6, 1000, eth(MX, 'ff:ff:ff:ff:ff:ff', 0x0806, arpReply(MX, GW, MC, CL)));
+
+  /* a ping pair */
+  push(t + 7, 0, eth(MC, MG, 0x0800, ip4(CL, GW, 1, [8, 0, 0, 0, 0, 1, 0, 1].concat(strB('abcdefghijklmnop')))));
+  push(t + 7, 800, eth(MG, MC, 0x0800, ip4(GW, CL, 1, [0, 0, 0, 0, 0, 1, 0, 1].concat(strB('abcdefghijklmnop')))));
+
+  return { buffer: writePcap(f), name: 'dragnet-sample.pcap' };
+};
+
+DN.testWriters = { writePcap: writePcap, writePcapng: writePcapng, eth: eth, ip4: ip4, tcp: tcp, udp: udp,
+  dnsQuery: dnsQuery, tlsClientHello: tlsClientHello, arpReq: arpReq, arpReply: arpReply, strB: strB };
+
+/* -- the suite -------------------------------------------------------- */
+/* ---- a capture built to exercise reassembly ------------------------- */
+function ip4f(src, dst, proto, payload, id, fragOff, more) {
+  var total = 20 + payload.length;
+  var ff = ((more ? 0x2000 : 0) | (fragOff >> 3)) & 0xffff;
+  var h = [0x45, 0].concat(be16(total), be16(id), be16(ff), [64, proto], be16(0), ipB(src), ipB(dst));
+  return h.concat(payload);
+}
+
+DN.reasmCapture = function () {
+  var f = [], t = 0;
+  var C = '3c:22:fb:11:22:33', S = '00:1b:44:55:66:77';
+  var cli = '10.0.7.9', srv = '10.0.7.20';
+  function push(frame, dt) { t += (dt == null ? 1000 : dt); f.push({ sec: 1750000000 + Math.floor(t / 1000000), usec: t % 1000000, data: frame }); }
+  function toSrv(payload, seq, ack, flags) { push(eth(C, S, 0x0800, ip4(cli, srv, 6, tcp(52000, 80, seq, ack, flags, payload)))); }
+  function toCli(payload, seq, ack, flags) { push(eth(S, C, 0x0800, ip4(srv, cli, 6, tcp(80, 52000, seq, ack, flags, payload)))); }
+
+  /* handshake: initial sequence numbers are known, so offsets are exact */
+  var ci = 1000, si = 5000;
+  toSrv([], ci, 0, 0x02);
+  toCli([], si, ci + 1, 0x12);
+  toSrv([], ci + 1, si + 1, 0x10);
+
+  /* a request cut across three segments, mid header on purpose:
+     no single packet decoder can read this, a rebuilt stream can */
+  var req = 'GET /reports/quarter.pdf HTTP/1.1\r\nHost: files.example.org\r\n' +
+            'User-Agent: dragnet-fixture/1\r\nAuthorization: Basic ZmFrZTpmYWtl\r\n' +
+            'Accept: */*\r\nConnection: keep-alive\r\n\r\n';
+  var rb = strB(req);
+  var cut1 = 20, cut2 = 70;
+  toSrv(rb.slice(0, cut1), ci + 1, si + 1, 0x18);
+  toSrv(rb.slice(cut1, cut2), ci + 1 + cut1, si + 1, 0x18);
+  toSrv(rb.slice(cut2), ci + 1 + cut2, si + 1, 0x18);
+  var creq = ci + 1 + rb.length;
+
+  /* the response: headers, then a chunked body whose second chunk arrives
+     before the first, and whose first chunk is then sent again */
+  var res = 'HTTP/1.1 200 OK\r\nServer: fixture\r\nContent-Type: application/pdf\r\n' +
+            'Transfer-Encoding: chunked\r\n\r\n';
+  var sb = strB(res);
+  var chunk1 = strB('10\r\n0123456789abcdef\r\n');
+  var chunk2 = strB('8\r\nfedcba98\r\n0\r\n\r\n');
+
+  toCli(sb, si + 1, creq, 0x18);
+  var afterHead = si + 1 + sb.length;
+  /* chunk two first: it lands past a hole */
+  toCli(chunk2, afterHead + chunk1.length, creq, 0x18);
+  /* now chunk one, filling the hole */
+  toCli(chunk1, afterHead, creq, 0x18);
+  /* and chunk one again, which is a plain retransmission */
+  toCli(chunk1, afterHead, creq, 0x18);
+  var endS = afterHead + chunk1.length + chunk2.length;
+  toSrv([], creq, endS, 0x10);
+  toSrv([], creq, endS, 0x11);
+  toCli([], endS, creq + 1, 0x11);
+
+  /* a second conversation where a segment was never captured, so the
+     rebuilt stream must show a hole rather than closing the gap */
+  var c2 = 7000, s2 = 9000;
+  function toSrv2(p, seq, fl) { push(eth(C, S, 0x0800, ip4(cli, srv, 6, tcp(52100, 9100, seq, s2 + 1, fl, p)))); }
+  toSrv2([], c2, 0x02);
+  push(eth(S, C, 0x0800, ip4(srv, cli, 6, tcp(9100, 52100, s2, c2 + 1, 0x12, []))));
+  var part1 = strB('FIRST-PART-'), missing = strB('MISSING-MIDDLE-'), part3 = strB('LAST-PART');
+  toSrv2(part1, c2 + 1, 0x18);
+  /* the middle segment is deliberately not written to the file */
+  toSrv2(part3, c2 + 1 + part1.length + missing.length, 0x18);
+
+  /* an IPv4 DNS query broken into three fragments */
+  var dq = udp(53000, 53, dnsQuery(0x7a7a, 'fragmented.example.net', 0));
+  var p1 = dq.slice(0, 8), p2 = dq.slice(8, 16), p3 = dq.slice(16);
+  push(eth(C, S, 0x0800, ip4f(cli, srv, 17, p1, 0x4d2, 0, true)));
+  push(eth(C, S, 0x0800, ip4f(cli, srv, 17, p2, 0x4d2, 8, true)));
+  push(eth(C, S, 0x0800, ip4f(cli, srv, 17, p3, 0x4d2, 16, false)));
+
+  /* a fragment group that never completes, which must not be stitched */
+  push(eth(C, S, 0x0800, ip4f(cli, srv, 17, dq.slice(0, 8), 0x4d3, 0, true)));
+
+  return { name: 'reassembly-fixture.pcap', buffer: writePcap(f), frames: f.length };
+};
+
+/* ---- a capture from the air ----------------------------------------- */
+function radiotap(signal, channel, rate) {
+  var freq = 2407 + channel * 5;
+  return [0, 0].concat(le16(15), le32(0x2e),
+    [0x10],                       /* flags: FCS present */
+    [(rate || 12) * 2],           /* rate in half megabits */
+    le16(freq), le16(0x00a0),     /* channel and its flags */
+    [signal & 0xff]);             /* signal, signed */
+}
+function wlanHdr(fc0, fc1, a1, a2, a3, seq) {
+  return [fc0, fc1].concat(le16(0), macB(a1), macB(a2), macB(a3), le16((seq << 4) & 0xffff));
+}
+function tag(id, body) { return [id, body.length].concat(body); }
+function ssidTag(name) { return tag(0, strB(name)); }
+function rsnIe(akm, cipher) {
+  return tag(48, [1, 0]
+    .concat([0x00, 0x0f, 0xac, cipher])
+    .concat(le16(1), [0x00, 0x0f, 0xac, cipher])
+    .concat(le16(1), [0x00, 0x0f, 0xac, akm])
+    .concat(le16(0)));
+}
+function beaconBody(ssid, channel, extra) {
+  var body = [0, 0, 0, 0, 0, 0, 0, 0].concat(le16(100), le16(extra && extra.privacy ? 0x0011 : 0x0001));
+  body = body.concat(ssid == null ? tag(0, []) : ssidTag(ssid));
+  body = body.concat(tag(1, [0x82, 0x84, 0x8b, 0x96]));
+  body = body.concat(tag(3, [channel]));
+  if (extra && extra.rsn) body = body.concat(rsnIe(extra.akm || 2, extra.cipher || 4));
+  return body;
+}
+function eapolKey(keyInfo, dataLen) {
+  var body = [2, 3].concat(le16(95), [2], be16(keyInfo), be16(16));
+  while (body.length < 4 + 1 + 2 + 2 + 8) body.push(0);          /* replay counter */
+  var pad = 32 + 16 + 8 + 8 + 16;                                 /* nonce, iv, rsc, reserved, mic */
+  for (var i = 0; i < pad; i++) body.push(0);
+  body = body.concat(be16(dataLen || 0));
+  for (var j = 0; j < (dataLen || 0); j++) body.push(0);
+  return body;
+}
+function snap(et, payload) { return [0xaa, 0xaa, 3, 0, 0, 0].concat(be16(et), payload); }
+
+DN.airCapture = function () {
+  var f = [], t = 0, seq = 0;
+  var AP1 = '00:11:22:33:44:55', AP2 = '66:77:88:99:aa:bb';
+  var OPEN = 'aa:bb:cc:dd:ee:ff', HID = 'de:ad:be:ef:00:11';
+  var CLI = '12:34:56:78:9a:bc', OLD = '02:aa:bb:cc:dd:ee';
+  var BCAST = 'ff:ff:ff:ff:ff:ff';
+
+  function push(frame, dt) {
+    t += (dt == null ? 20000 : dt);
+    f.push({ sec: 1750000000 + Math.floor(t / 1000000), usec: t % 1000000, data: frame });
+  }
+  function mgmt(sub, a1, a2, a3, body, sig, chan) {
+    push(radiotap(sig == null ? -55 : sig, chan || 6, 12)
+      .concat(wlanHdr((sub << 4) | 0x00, 0, a1, a2, a3, seq++), body));
+  }
+  function data(sub, fc1, a1, a2, a3, body, sig) {
+    push(radiotap(sig == null ? -50 : sig, 6, 24)
+      .concat(wlanHdr((sub << 4) | 0x08, fc1, a1, a2, a3, seq++), body));
+  }
+
+  /* two radios beaconing the same name, one of them WPA2 */
+  mgmt(8, BCAST, AP1, AP1, beaconBody('GreenShoe', 6, { privacy: true, rsn: true, akm: 2, cipher: 4 }), -42, 6);
+  mgmt(8, BCAST, AP2, AP2, beaconBody('GreenShoe', 11, { privacy: true, rsn: true, akm: 2, cipher: 4 }), -71, 11);
+  mgmt(8, BCAST, AP1, AP1, beaconBody('GreenShoe', 6, { privacy: true, rsn: true, akm: 2, cipher: 4 }), -44, 6);
+
+  /* an open network and a hidden one */
+  mgmt(8, BCAST, OPEN, OPEN, beaconBody('GuestWiFi', 1, {}), -60, 1);
+  mgmt(8, BCAST, HID, HID, beaconBody(null, 3, { privacy: true, rsn: true }), -66, 3);
+
+  /* a device calling out where it has been */
+  mgmt(4, BCAST, OLD, BCAST, ssidTag('HomeNetwork').concat(tag(1, [0x82, 0x84])), -70, 6);
+  mgmt(4, BCAST, OLD, BCAST, ssidTag('CoffeeShop-Guest').concat(tag(1, [0x82, 0x84])), -72, 6);
+  mgmt(5, OLD, AP1, AP1, beaconBody('GreenShoe', 6, { privacy: true, rsn: true }), -45, 6);
+
+  /* the four way handshake, in order */
+  data(0, 0x02, CLI, AP1, AP1, snap(0x888e, eapolKey(0x008a, 0)));
+  data(0, 0x01, AP1, CLI, AP1, snap(0x888e, eapolKey(0x010a, 22)));
+  data(0, 0x02, CLI, AP1, AP1, snap(0x888e, eapolKey(0x03ca, 24)));
+  data(0, 0x01, AP1, CLI, AP1, snap(0x888e, eapolKey(0x030a, 0)));
+
+  /* ordinary traffic over the air, and a frame we are not allowed to read */
+  data(0, 0x02, CLI, AP1, AP1, snap(0x0806,
+    be16(1).concat(be16(0x0800), [6, 4], be16(1),
+      macB(CLI), ipB('10.0.9.44'), macB('00:00:00:00:00:00'), ipB('10.0.9.1'))));
+  push(radiotap(-51, 6, 24).concat(wlanHdr(0x08, 0x42, AP1, CLI, AP1, seq++), [0, 1, 2, 3, 4, 5, 6, 7]));
+
+  /* a deauthentication burst, which is how clients get pushed off */
+  for (var i = 0; i < 26; i++) {
+    mgmt(12, BCAST, AP1, AP1, le16(7), -43, 6);
+  }
+
+  /* a control frame, which carries fewer addresses */
+  push(radiotap(-48, 6, 24).concat([0xd4, 0x00].concat(le16(0), macB(CLI))));
+
+  return { name: 'air-fixture.pcap', buffer: writePcap(f, { linktype: 127 }), frames: f.length };
+};
+
+DN.selfTest = function () {
+  var results = [], pass = 0, fail = 0;
+  function ok(name, cond, detail) {
+    if (cond) { pass++; results.push({ ok: true, name: name }); }
+    else { fail++; results.push({ ok: false, name: name, detail: detail || '' }); }
+  }
+  function eq(name, got, want) { ok(name, got === want, 'got ' + JSON.stringify(got) + ', wanted ' + JSON.stringify(want)); }
+
+  /* formatters */
+  eq('mac formatter', DN.mac(W([0xde, 0xad, 0xbe, 0xef, 0x00, 0x01]), 0), 'de:ad:be:ef:00:01');
+  eq('ipv4 formatter', DN.ip4(W([192, 168, 1, 250]), 0), '192.168.1.250');
+  eq('ipv6 formatter collapses zeroes', DN.ip6(W([0x20, 1, 0x0d, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]), 0), '2001:db8::1');
+  eq('byte formatter', DN.bytesHuman(1536), '1.50 KB');
+  ok('seconds formatter handles sub millisecond', DN.secs(0.00004).indexOf('us') > 0, DN.secs(0.00004));
+
+  /* readers */
+  var frames = [{ sec: 1700000000, usec: 500000, data: eth('aa:bb:cc:dd:ee:ff', 'ff:ff:ff:ff:ff:ff', 0x0806, arpReq('aa:bb:cc:dd:ee:ff', '10.0.0.5', '10.0.0.1')) }];
+  var leBuf = writePcap(frames, { le: true });
+  var beBuf = writePcap(frames, { le: false });
+  var leCap = DN.readCapture(leBuf), beCap = DN.readCapture(beBuf);
+  eq('little endian pcap packet count', leCap.packets.length, 1);
+  eq('big endian pcap packet count', beCap.packets.length, 1);
+  eq('endianness detected', leCap.endian + '/' + beCap.endian, 'little/big');
+  eq('link type read', leCap.linktype, 1);
+  ok('timestamps agree across endianness', Math.abs(leCap.packets[0].ts - beCap.packets[0].ts) < 0.001);
+  eq('timestamp converts to ms', leCap.packets[0].ts, 1700000000500);
+
+  var ngCap = DN.readCapture(writePcapng(frames, 1));
+  eq('pcapng format detected', ngCap.format, 'pcapng');
+  eq('pcapng packet count', ngCap.packets.length, 1);
+  eq('pcapng interface recorded', ngCap.interfaces.length, 1);
+  ok('pcapng timestamp matches pcap', Math.abs(ngCap.packets[0].ts - leCap.packets[0].ts) < 0.001,
+     ngCap.packets[0].ts + ' vs ' + leCap.packets[0].ts);
+
+  var bad = W([1, 2, 3, 4].concat(new Array(40).fill(0))).buffer;
+  var threw = false; try { DN.readCapture(bad); } catch (e) { threw = true; }
+  ok('rubbish file is rejected', threw);
+
+  /* dissection */
+  var d0 = DN.dissect(leCap.packets[0]);
+  eq('arp dissected', d0.proto, 'ARP');
+  eq('arp source recorded', d0.src, '10.0.0.5');
+  ok('arp info is readable', d0.info.indexOf('Who has 10.0.0.1') === 0, d0.info);
+
+  function one(frame) {
+    var c = DN.readCapture(writePcap([{ sec: 1700000000, usec: 0, data: frame }]));
+    return DN.dissect(c.packets[0]);
+  }
+  var dTcp = one(eth('aa:bb:cc:00:00:01', 'aa:bb:cc:00:00:02', 0x0800, ip4('192.168.1.10', '192.168.1.20', 6, tcp(51000, 443, 1, 0, 0x02))));
+  eq('tcp transport', dTcp.transport, 'TCP');
+  eq('tcp ports', dTcp.sport + '/' + dTcp.dport, '51000/443');
+  eq('syn flag decoded', dTcp.flags.join(','), 'SYN');
+  eq('tcp addresses', dTcp.src + '>' + dTcp.dst, '192.168.1.10>192.168.1.20');
+
+  var dRst = one(eth('aa:bb:cc:00:00:01', 'aa:bb:cc:00:00:02', 0x0800, ip4('192.168.1.10', '192.168.1.20', 6, tcp(51000, 443, 1, 2, 0x14))));
+  eq('rst plus ack decoded', dRst.flags.join(','), 'RST,ACK');
+
+  var dDns = one(eth('aa:bb:cc:00:00:01', 'aa:bb:cc:00:00:02', 0x0800, ip4('10.1.1.5', '10.1.1.1', 17, udp(40000, 53, dnsQuery(1, 'field.instruments.test', 0)))));
+  eq('dns app tagged', dDns.app, 'DNS');
+  eq('dns question name', dDns.dns.questions[0].name, 'field.instruments.test');
+
+  var dDnsR = one(eth('aa:bb:cc:00:00:02', 'aa:bb:cc:00:00:01', 0x0800, ip4('10.1.1.1', '10.1.1.5', 17, udp(53, 40000, dnsQuery(1, 'field.instruments.test', 1, '198.51.100.7')))));
+  eq('dns answer parsed', (dDnsR.dns.answers[0] || {}).value, '198.51.100.7');
+  eq('dns answer is flagged as a response', dDnsR.dns.qr, 1);
+
+  var dTls = one(eth('aa:bb:cc:00:00:01', 'aa:bb:cc:00:00:02', 0x0800, ip4('10.1.1.5', '198.51.100.7', 6, tcp(51001, 443, 1, 1, 0x18, tlsClientHello('secure.example.org')))));
+  eq('tls app tagged', dTls.app, 'TLS');
+  eq('tls handshake named', dTls.tls.handshake, 'client hello');
+  eq('sni extracted', dTls.tls.sni, 'secure.example.org');
+
+  var httpBytes = strB('POST /login HTTP/1.1\r\nHost: intranet.local\r\nAuthorization: Basic Zm9vOmJhcg==\r\n\r\n');
+  var dHttp = one(eth('aa:bb:cc:00:00:01', 'aa:bb:cc:00:00:02', 0x0800, ip4('10.1.1.5', '10.1.1.9', 6, tcp(51002, 80, 1, 1, 0x18, httpBytes))));
+  eq('http app tagged', dHttp.app, 'HTTP');
+  eq('http method parsed', dHttp.http.method, 'POST');
+  eq('http host header parsed', dHttp.http.host, 'intranet.local');
+  ok('http basic auth raises a credential risk', !!dHttp.credentialRisk, dHttp.credentialRisk);
+
+  var dIcmp = one(eth('aa:bb:cc:00:00:01', 'aa:bb:cc:00:00:02', 0x0800, ip4('10.1.1.5', '10.1.1.1', 1, [8, 0, 0, 0, 0, 1, 0, 1])));
+  eq('icmp named', dIcmp.icmpName, 'echo request');
+
+  var v6 = [0x60, 0, 0, 0].concat([0, 8], [17, 64],
+    [0x20, 1, 0x0d, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+    [0x20, 1, 0x0d, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2], udp(1234, 5678, []));
+  var dV6 = one(eth('aa:bb:cc:00:00:01', 'aa:bb:cc:00:00:02', 0x86dd, v6));
+  eq('ipv6 source', dV6.src, '2001:db8::1');
+  eq('ipv6 over udp', dV6.transport, 'UDP');
+
+  var vlanFrame = macB('aa:bb:cc:00:00:02').concat(macB('aa:bb:cc:00:00:01'), be16(0x8100), be16(0x0064), be16(0x0800),
+    ip4('10.2.2.2', '10.2.2.3', 17, udp(1000, 2000, [1, 2, 3, 4])));
+  var dVlan = one(vlanFrame);
+  eq('vlan tag read', dVlan.vlan, 100);
+  eq('vlan payload still dissected', dVlan.transport, 'UDP');
+
+  /* conversation keying is direction free */
+  var kA = DN.convKey({ src: '10.0.0.1', dst: '10.0.0.2', sport: 1000, dport: 80, transport: 'TCP' });
+  var kB = DN.convKey({ src: '10.0.0.2', dst: '10.0.0.1', sport: 80, dport: 1000, transport: 'TCP' });
+  eq('conversation key is direction free', kA.key, kB.key);
+
+  /* whole capture analysis on the sample */
+  var sample = DN.sampleCapture();
+  var cap = DN.readCapture(sample.buffer);
+  var rows = cap.packets.map(DN.dissect);
+  var DF = DN.defragment(rows, cap.packets);
+  var RE = DN.reassemble(rows, cap.packets);
+  var A = DN.analyze(rows, { name: sample.name, reasm: RE, defrag: DF });
+  ok('sample capture parses', rows.length > 40, rows.length + ' packets');
+  eq('no dissector errors on the sample', A.dissectErrors, 0);
+  ok('sample finds conversations', A.convs.length >= 5, A.convs.length);
+  ok('sample finds hosts', A.hosts.length >= 5, A.hosts.length);
+  ok('sample span is positive', A.span > 0, A.span);
+  ok('sample sees the sni', A.sni.some(function (s) { return s.name === 'www.example.com'; }));
+  ok('sample sees the http request', A.http.some(function (h) { return h.host === 'printer.lan'; }));
+  ok('sample sees dns lookups', A.dns.length >= 4, A.dns.length);
+  ok('sample catches the credential exposure', A.creds.length >= 1, A.creds.length);
+  ok('sample catches the retransmission', A.retrans >= 1, A.retrans);
+  ok('sample catches unanswered syns', A.unansweredSyns >= 5, A.unansweredSyns);
+  ok('sample records refusals', A.refusedSyns >= 1, A.refusedSyns);
+  ok('protocol tree has an ethernet root', !!A.tree.eth);
+  ok('protocol tree counts every packet at the root',
+     Object.keys(A.tree).reduce(function (s, k) { return s + A.tree[k]._n; }, 0) === rows.length);
+  ok('byte totals are positive', A.bytes > 0);
+
+  var completed = A.convs.filter(function (c) { return c.state === 'closed'; });
+  ok('sample has a cleanly closed tcp conversation', completed.length >= 1, completed.length);
+  var noAnswer = A.convs.filter(function (c) { return c.state === 'no answer'; });
+  ok('sample has unanswered tcp conversations', noAnswer.length >= 5, noAnswer.length);
+
+  var F = DN.findings(A);
+  ok('findings produce a brief', F.brief.length >= 3, F.brief.length);
+  ok('findings flag the cleartext credentials', F.items.some(function (x) { return x.severity === 'flag' && /credential/i.test(x.title); }));
+  ok('findings flag the sweep', F.items.some(function (x) { return /sweep/i.test(x.title + x.text); }));
+  ok('findings mention the arp conflict', F.items.some(function (x) { return /claimed by more than one/i.test(x.title); }));
+  ok('findings name the tls destination', F.items.some(function (x) { return /www\.example\.com/.test(x.text); }));
+  ok('findings mention retransmission', F.items.some(function (x) { return /sent again/i.test(x.title); }));
+  ok('findings are sorted worst first', F.items.length < 2 || F.items[0].severity === 'flag', (F.items[0] || {}).severity);
+
+  /* an empty net says so rather than throwing */
+  var empty = DN.findings(DN.analyze([], {}));
+  ok('empty selection is handled', empty.items.length === 0 && empty.brief.length === 1);
+
+  /* pcapng round trip of the sample */
+  var ngFrames = cap.packets.map(function (p) {
+    return { sec: Math.floor(p.ts / 1000), usec: Math.round((p.ts % 1000) * 1000), data: Array.from(p.bytes) };
+  });
+  var ng = DN.readCapture(writePcapng(ngFrames, 1));
+  eq('pcapng round trip keeps the packet count', ng.packets.length, cap.packets.length);
+  var ngRows = ng.packets.map(DN.dissect);
+  var ngA = DN.analyze(ngRows, {});
+  eq('pcapng round trip keeps the conversation count', ngA.convs.length, A.convs.length);
+
+  /* truncation honesty */
+  var shortBuf = leBuf.slice(0, leBuf.byteLength - 6);
+  var shortCap = DN.readCapture(shortBuf);
+  ok('a cut file is reported as cut', shortCap.truncated === true || shortCap.warnings.length > 0);
+
+  /* raw ip link type */
+  var rawCap = DN.readCapture(writePcap(
+    [{ sec: 1700000000, usec: 0, data: ip4('10.9.9.1', '10.9.9.2', 17, udp(4444, 5555, [9, 9])) }], { linktype: 101 }));
+  var rawRow = DN.dissect(rawCap.packets[0]);
+  eq('raw ip link type dissects', rawRow.src, '10.9.9.1');
+
+
+  /* ---------------- v1.1 reassembly ---------------- */
+  var rc = DN.reasmCapture();
+  var rcap = DN.readCapture(rc.buffer);
+  var rrows = rcap.packets.map(DN.dissect);
+  var rdf = DN.defragment(rrows, rcap.packets);
+  var rre = DN.reassemble(rrows, rcap.packets);
+  var RA = DN.analyze(rrows, { name: rc.name, reasm: rre, defrag: rdf });
+
+  ok('reassembly fixture parses', rrows.length > 15, rrows.length);
+  eq('no dissector errors on the reassembly fixture', RA.dissectErrors, 0);
+
+  /* range set arithmetic, the spine of the state machine */
+  var rs = new DN.RangeSet();
+  rs.add(0, 10); rs.add(20, 30);
+  ok('range set keeps a hole', rs.contiguousEnd() === 10, rs.contiguousEnd());
+  ok('range set sees a covered span', rs.covers(2, 8));
+  ok('range set rejects a span across the hole', !rs.covers(5, 25));
+  ok('range set sees a partial overlap', rs.touches(8, 22));
+  rs.add(10, 20);
+  eq('filling the hole merges the ranges', rs.contiguousEnd(), 30);
+  var rs2 = new DN.RangeSet();
+  rs2.add(5, 10); rs2.add(0, 5);
+  eq('range set merges backwards too', rs2.contiguousEnd(), 10);
+
+  /* the request that no single packet could carry */
+  var http = RA.convs.filter(function (c) { return c.bPort === 80 || c.aPort === 80; })[0];
+  ok('the http conversation was found', !!http);
+  var reqs = (http.messages || []).filter(function (m) { return m.kind === 'http' && !m.response; });
+  eq('the split request rebuilt into one message', reqs.length, 1);
+  eq('rebuilt request method', reqs[0].method, 'GET');
+  eq('rebuilt request path', reqs[0].path, '/reports/quarter.pdf');
+  eq('rebuilt request host', reqs[0].host, 'files.example.org');
+  eq('a header past the first segment is visible', reqs[0].authorization, 'Basic');
+  ok('the rebuilt request is complete', reqs[0].complete);
+  ok('no single packet held the whole request',
+     rrows.filter(function (r) { return r.http && r.http.isRequest; }).length <= 1);
+
+  var reses = (http.messages || []).filter(function (m) { return m.kind === 'http' && m.response; });
+  eq('the response rebuilt into one message', reses.length, 1);
+  eq('rebuilt response status', reses[0].status, 200);
+  ok('the chunked body was walked', reses[0].chunked && reses[0].bodyLen === 24, reses[0].bodyLen);
+
+  /* classification: an arrival out of order is not a retransmission */
+  ok('the fixture retransmission was classified', rre.totals.retrans >= 1, rre.totals.retrans);
+  ok('the out of order arrival was classified', rre.totals.ooo >= 1, rre.totals.ooo);
+  ok('out of order was not counted as loss', RA.outOfOrder >= 1 && RA.retrans >= 1);
+  function bigger(c) { return c.streams.a.bytes >= c.streams.b.bytes ? c.streams.a : c.streams.b; }
+  function smaller(c) { return c.streams.a.bytes >= c.streams.b.bytes ? c.streams.b : c.streams.a; }
+  var srvDir = bigger(http);
+  ok('the retransmitted bytes were not written twice',
+     srvDir.stream.length === srvDir.bytes, srvDir.stream.length + ' vs ' + srvDir.bytes);
+  ok('every segment got a verdict', Object.keys(rre.segClass).length >= 8, Object.keys(rre.segClass).length);
+
+  /* a hole stays a hole */
+  var gapConv = RA.convs.filter(function (c) { return c.bPort === 9100 || c.aPort === 9100; })[0];
+  ok('the conversation with a missing segment was found', !!gapConv);
+  ok('the missing segment left a hole', gapConv.gaps >= 1, gapConv.gaps);
+  var gapDir = bigger(gapConv);
+  ok('the hole is the right size',
+     gapDir.gaps.length === 1 && gapDir.gaps[0].to - gapDir.gaps[0].from === 15,
+     JSON.stringify(gapDir.gaps));
+  ok('bytes either side of the hole survived',
+     DN.streamText(gapDir.stream).indexOf('FIRST-PART-') === 0 &&
+     DN.streamText(gapDir.stream).indexOf('LAST-PART') > 0);
+  ok('findings own up to the holes', DN.findings(RA).items.some(function (x) { return /hole/i.test(x.title); }));
+
+  /* fragments */
+  eq('fragments were rebuilt into a datagram', rdf.datagrams, 1);
+  eq('the incomplete fragment group was left alone', rdf.incomplete, 1);
+  var frag = rrows.filter(function (r) { return r.defragged; })[0];
+  ok('the rebuilt datagram dissected', !!frag && frag.transport === 'UDP', frag && frag.transport);
+  ok('the name inside the fragments is readable',
+     !!frag && !!frag.dns && frag.dns.questions[0].name === 'fragmented.example.net',
+     frag && frag.dns && frag.dns.questions[0].name);
+  ok('later fragments are marked as carried, not counted twice',
+     rrows.filter(function (r) { return r.fragConsumed; }).length === 2);
+  ok('the incomplete group is flagged incomplete',
+     rrows.filter(function (r) { return r.fragIncomplete; }).length === 1);
+  ok('findings report the reassembled datagram',
+     DN.findings(RA).items.some(function (x) { return /fragment/i.test(x.text); }));
+
+  /* stream rendering helpers stay inert */
+  var tx = DN.streamText(W([72, 105, 0, 10, 200]));
+  eq('stream text keeps printable bytes and replaces the rest', tx, 'Hi.\n.');
+  ok('stream hex is offset prefixed', /^00000000  48 69/.test(DN.streamHex(W([72, 105]))), DN.streamHex(W([72, 105])).slice(0, 20));
+  eq('an empty stream decodes to nothing', DN.decodeStream(W([]), [], 80).length, 0);
+  eq('rubbish bytes decode to nothing', DN.decodeStream(W([1, 2, 3, 4, 5, 6, 7, 8]), [], 1234).length, 0);
+
+
+  /* ---------------- v1.2 radiotap and 802.11 ---------------- */
+  var ac = DN.airCapture();
+  var acap = DN.readCapture(ac.buffer);
+  eq('the air fixture declares radiotap', acap.linktype, 127);
+  var arows = acap.packets.map(DN.dissect);
+  var AW = DN.analyze(arows, { name: ac.name, reasm: DN.reassemble(arows, acap.packets) });
+  var FW = DN.findings(AW);
+  eq('no dissector errors on the air fixture', AW.dissectErrors, 0);
+
+  /* radiotap */
+  var b0 = arows[0];
+  ok('radiotap header was read', !!b0.radiotap, JSON.stringify(b0.radiotap));
+  eq('radiotap signal is signed', b0.radiotap.signal, -42);
+  eq('radiotap frequency maps to a channel', b0.radiotap.channel, 6);
+  eq('radiotap reports the band', b0.radiotap.band, '2.4 GHz');
+  eq('radiotap rate is in megabits', b0.radiotap.rate, 12);
+  eq('channel 36 maps from 5 GHz', DN.freqToChannel(5180), 36);
+
+  /* frame dissection */
+  eq('a beacon is management', b0.wifi.type, 'management');
+  eq('the beacon subtype is named', b0.wifi.name, 'beacon');
+  eq('the SSID came out of the tags', b0.wifi.ssid, 'GreenShoe');
+  eq('the channel tag was read', b0.wifi.channel, 6);
+  ok('the security suite was read', /WPA2/.test(b0.wifi.security), b0.wifi.security);
+  ok('the cipher was read', /CCMP/.test(b0.wifi.security), b0.wifi.security);
+  eq('the bssid was worked out from the direction bits', b0.wifi.bssid, '00:11:22:33:44:55');
+
+  var hidden = arows.filter(function (r) { return r.wifi && r.wifi.ssidHidden && r.wifi.subtype === 8; });
+  ok('a nameless beacon is recorded as hidden', hidden.length >= 1, hidden.length);
+  var openAp = AW.wifi.aps.filter(function (a) { return a.ssidList[0] === 'GuestWiFi'; })[0];
+  ok('the open network was heard', !!openAp);
+  ok('the open network has no security suite', openAp && !openAp.security && !openAp.privacy);
+
+  var probe = arows.filter(function (r) { return r.wifi && r.wifi.subtype === 4 && r.wifi.typeCode === 0; });
+  eq('probe requests were found', probe.length, 2);
+  eq('a probe request names the network it wants', probe[0].wifi.ssid, 'HomeNetwork');
+
+  var deauth = arows.filter(function (r) { return r.wifi && r.wifi.subtype === 12; });
+  eq('the deauthentication burst was counted', deauth.length, 26);
+  ok('the reason code was put into words', /never associated/.test(deauth[0].wifi.reasonText), deauth[0].wifi.reasonText);
+
+  var ctrl = arows.filter(function (r) { return r.wifi && r.wifi.typeCode === 1; });
+  eq('the control frame was dissected', ctrl.length, 1);
+  eq('the control frame was named', ctrl[0].wifi.name, 'ACK');
+
+  var enc = arows.filter(function (r) { return r.wifi && r.wifi.encrypted; });
+  eq('an encrypted data frame is flagged, not guessed at', enc.length, 1);
+  ok('the encrypted frame says so plainly', /not readable/.test(enc[0].info), enc[0].info);
+
+  /* data frames find their way back to the ordinary dissectors */
+  var arp = arows.filter(function (r) { return r.arp; });
+  eq('ARP over 802.11 came back through LLC and SNAP', arp.length, 1);
+  eq('the ARP sender survived the trip', arp[0].arp.spa, '10.0.9.44');
+
+  /* the handshake */
+  var eap = arows.filter(function (r) { return r.eapol; });
+  eq('all four handshake frames were seen', eap.length, 4);
+  eq('handshake messages were numbered in order',
+     eap.map(function (r) { return r.eapol.message; }).join(''), '1234');
+
+  /* what the analysis makes of it */
+  eq('both radios were catalogued', AW.wifi.aps.filter(function (a) { return a.beacons; }).length, 4);
+  eq('one name came from two radios', AW.wifi.ssidMap.get('GreenShoe').size, 2);
+  eq('the probing device was tracked', AW.wifi.probes.size, 1);
+  eq('both requested names were kept', AW.wifi.probes.get('02:aa:bb:cc:dd:ee').size, 2);
+  eq('the deauthentications reached the analysis', AW.wifi.deauths.length, 26);
+  eq('one complete handshake was recorded', AW.wifi.eapol.size, 1);
+  eq('the handshake has all four messages', Array.from(AW.wifi.eapol.values())[0].size, 4);
+  ok('the frame count matches', AW.wifi.frames === arows.length, AW.wifi.frames + ' of ' + arows.length);
+
+  /* and what it says out loud */
+  function saysWhat(re) { return FW.items.some(function (x) { return re.test(x.title) || re.test(x.text); }); }
+  ok('findings name the duplicate SSID', saysWhat(/more than one radio/i));
+  ok('the duplicate SSID is flagged, not merely noted',
+     FW.items.some(function (x) { return /more than one radio/.test(x.title) && x.severity === 'flag'; }));
+  ok('findings refuse to call the duplicate an attack on its own',
+     FW.items.some(function (x) { return /more than one radio/.test(x.title) && /ordinary multi radio/.test(x.text); }));
+  ok('findings name the open network', saysWhat(/no encryption/i));
+  ok('findings name the hidden network', saysWhat(/beacons? without a name/i));
+  ok('findings call the deauthentication burst a flood',
+     FW.items.some(function (x) { return /deauthentication/.test(x.title) && x.severity === 'flag'; }));
+  ok('findings note that deauthentication frames prove nothing about the sender',
+     saysWhat(/proves nothing/i));
+  ok('findings raise the captured handshake', saysWhat(/four way handshake/i));
+  ok('findings explain what a handshake does and does not give away', saysWhat(/does not hand anyone the key/i));
+  ok('findings raise the probe requests', saysWhat(/named (a network it was|networks they were) looking for/i));
+  ok('findings mention that modern phones randomise', saysWhat(/randomise/i));
+  ok('findings report the encrypted frames without pretending to read them', saysWhat(/does not attempt to decrypt/i));
+
+  /* the wired fixtures must be untouched by any of this */
+  ok('the wired sample has no air section', !A.wifi);
+
+  return { pass: pass, fail: fail, results: results };
+};
+
+})(typeof window !== 'undefined' ? window : globalThis);
+
+/* ====================================================================
+   THE INSTRUMENT: DOM wiring
+   ==================================================================== */
+(function () {
+'use strict';
+if (typeof document === 'undefined') return;
+var DN = window.DRAGNET;
+
+var plural = DN.plural;
+
+var S = {
+  capture: null, rows: [], all: null, view: null, findings: null,
+  netA: 0, netB: 1, t0: 0, t1: 1, selectedConv: null,
+  sortKey: 'bytes', sortDir: -1, debug: false, log: []
+};
+
+var $ = function (id) { return document.getElementById(id); };
+function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+function clear(node) { while (node.firstChild) node.removeChild(node.firstChild); }
+
+function dbg() {
+  if (!S.debug) return;
+  var line = new Date().toISOString().slice(11, 23) + '  ' + Array.prototype.join.call(arguments, ' ');
+  S.log.push(line);
+  if (S.log.length > 800) S.log.shift();
+  var box = $('debugLog');
+  if (box) box.textContent = S.log.join('\n');
+  $('dbgCount').textContent = S.log.length + ' lines';
+}
+
+/* ---- storage, guarded --------------------------------------------- */
+function store(k, v) { try { localStorage.setItem('dragnet.' + k, v); } catch (e) { dbg('storage blocked'); } }
+function recall(k) { try { return localStorage.getItem('dragnet.' + k); } catch (e) { return null; } }
+
+/* ---- theme --------------------------------------------------------- */
+var themeSel = $('themeSel');
+var savedTheme = recall('theme');
+if (savedTheme) { document.documentElement.dataset.theme = savedTheme; themeSel.value = savedTheme; }
+themeSel.addEventListener('change', function () {
+  document.documentElement.dataset.theme = themeSel.value;
+  store('theme', themeSel.value);
+  drawStrip();
+});
+
+/* ---- dialogs ------------------------------------------------------- */
+function openDlg(d) { if (d.showModal) d.showModal(); else d.setAttribute('open', ''); }
+document.querySelectorAll('[data-close]').forEach(function (b) {
+  b.addEventListener('click', function () { b.closest('dialog').close(); });
+});
+$('btnAbout').addEventListener('click', function () { openDlg($('dlgAbout')); });
+$('btnExport').addEventListener('click', function () { openDlg($('dlgExport')); });
+$('dbgToggle').addEventListener('change', function (e) {
+  S.debug = e.target.checked;
+  if (S.debug) { dbg('debug logging on, dragnet ' + DN.VERSION); openDlg($('dlgDebug')); }
+});
+$('dbgClear').addEventListener('click', function () { S.log = []; $('debugLog').textContent = ''; $('dbgCount').textContent = ''; });
+
+/* ---- self test ----------------------------------------------------- */
+$('btnTest').addEventListener('click', function () {
+  var box = $('testLog');
+  box.textContent = 'running...';
+  openDlg($('dlgTest'));
+  setTimeout(function () {
+    var t0 = performance.now();
+    var r;
+    try { r = DN.selfTest(); }
+    catch (e) { box.textContent = 'The suite itself threw: ' + e.message; return; }
+    var ms = (performance.now() - t0).toFixed(0);
+    clear(box);
+    var head = el('div');
+    head.appendChild(el('b', r.fail ? 'fail' : 'pass', r.pass + ' passed, ' + r.fail + ' failed in ' + ms + ' ms'));
+    box.appendChild(head);
+    box.appendChild(el('div', null, ' '));
+    r.results.forEach(function (x) {
+      var line = el('div', x.ok ? 'pass' : 'fail',
+        (x.ok ? '  ok   ' : ' FAIL  ') + x.name + (x.ok ? '' : '   ' + x.detail));
+      box.appendChild(line);
+    });
+    dbg('self test', r.pass + '/' + (r.pass + r.fail));
+  }, 20);
+});
+
+/* ---- intake -------------------------------------------------------- */
+var intake = $('intake');
+window.DRAGNET_TEST_INGEST = ingest;   /* used by the headless page test */
+$('fileIn').addEventListener('change', function (e) { if (e.target.files[0]) loadFile(e.target.files[0]); });
+$('btnDemo').addEventListener('click', function () {
+  var s = DN.sampleCapture();
+  ingest(s.buffer, s.name + ' (built in sample)');
+});
+['dragenter', 'dragover'].forEach(function (ev) {
+  document.addEventListener(ev, function (e) { e.preventDefault(); intake.classList.add('hot'); });
+});
+['dragleave', 'drop'].forEach(function (ev) {
+  document.addEventListener(ev, function (e) { e.preventDefault(); if (ev === 'dragleave' && e.relatedTarget) return; intake.classList.remove('hot'); });
+});
+document.addEventListener('drop', function (e) {
+  e.preventDefault();
+  var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+  if (f) loadFile(f);
+});
+
+function loadFile(file) {
+  dbg('opening', file.name, file.size + ' bytes');
+  var rd = new FileReader();
+  rd.onerror = function () { fatal('The browser could not read that file.'); };
+  rd.onload = function () {
+    var buf = rd.result;
+    var u = new Uint8Array(buf);
+    if (u.length > 2 && u[0] === 0x1f && u[1] === 0x8b) {
+      if (typeof DecompressionStream === 'undefined') {
+        fatal('That file is gzipped and this browser cannot unzip it here. Unzip it first, then open the .pcap.');
+        return;
+      }
+      dbg('gzip detected, inflating');
+      new Response(new Blob([buf]).stream().pipeThrough(new DecompressionStream('gzip'))).arrayBuffer()
+        .then(function (b) { ingest(b, file.name); })
+        .catch(function () { fatal('That gzip file would not inflate.'); });
+      return;
+    }
+    ingest(buf, file.name);
+  };
+  rd.readAsArrayBuffer(file);
+}
+
+function fatal(msg) {
+  intake.hidden = false;
+  clear(intake);
+  var h = el('h1', null, 'That capture would not open');
+  var p = el('p', null, msg);
+  var p2 = el('p', 'fine', 'Drop another file on this panel, or press Load sample to see what a working capture looks like.');
+  intake.appendChild(h); intake.appendChild(p); intake.appendChild(p2);
+  dbg('fatal', msg);
+}
+
+function ingest(buf, name) {
+  var t0 = performance.now();
+  var cap;
+  try { cap = DN.readCapture(buf, { maxPackets: 400000 }); }
+  catch (e) { fatal(e.message); return; }
+  dbg('read', cap.format, cap.packets.length + ' packets', (performance.now() - t0).toFixed(0) + ' ms');
+
+  S.capture = cap;
+  S.capture.name = name;
+  S.rows = cap.packets.map(DN.dissect);
+  dbg('dissected in', (performance.now() - t0).toFixed(0) + ' ms');
+
+  S.defrag = DN.defragment(S.rows, cap.packets);
+  if (S.defrag.fragments) dbg('defragment', S.defrag.datagrams + ' datagrams from ' + S.defrag.fragments + ' fragments');
+
+  var withTime = S.rows.filter(function (r) { return r.ts > 0; });
+  S.t0 = withTime.length ? Math.min.apply(null, withTime.map(function (r) { return r.ts; })) : 0;
+  S.t1 = withTime.length ? Math.max.apply(null, withTime.map(function (r) { return r.ts; })) : 1;
+  if (S.t1 <= S.t0) S.t1 = S.t0 + 1;
+  S.netA = 0; S.netB = 1; S.selectedConv = null;
+
+  intake.hidden = true;
+  $('dragbar').hidden = false;
+  $('rail').hidden = false;
+  $('main').hidden = false;
+
+  $('capName').textContent = name;
+  $('capSpan').textContent = cap.format + ' \u00b7 ' + (DN.LINKTYPES[cap.linktype] || ('link ' + cap.linktype)) +
+    ' \u00b7 ' + cap.packets.length + ' packets \u00b7 ' + DN.bytesHuman(buf.byteLength);
+
+  showWarnings(cap);
+  layoutNet();
+  drawStrip();
+  recompute();
+}
+
+function showWarnings(cap) {
+  var box = $('warnBox');
+  clear(box);
+  (cap.warnings || []).forEach(function (w) { box.appendChild(el('div', 'notice', w)); });
+  if (cap.truncated && !(cap.warnings || []).length) box.appendChild(el('div', 'notice', 'This capture is cut short. The last record is incomplete.'));
+}
+
+/* ---- the drag bar --------------------------------------------------- */
+var strip = $('strip'), canvas = $('stripCanvas'), netEl = $('net');
+var CATS = [
+  { k: 'tcp', v: '--cool' }, { k: 'udp', v: '--ok' }, { k: 'icmp', v: '--violet' },
+  { k: 'arp', v: '--warn' }, { k: 'other', v: '--ink-faint' }
+];
+function catOf(r) {
+  if (r.transport === 'TCP') return 0;
+  if (r.transport === 'UDP') return 1;
+  if (r.proto === 'ICMP' || r.proto === 'ICMPv6') return 2;
+  if (r.proto === 'ARP') return 3;
+  return 4;
+}
+function cssVar(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || '#888'; }
+
+function drawStrip() {
+  if (!S.rows.length) return;
+  var dpr = window.devicePixelRatio || 1;
+  var w = strip.clientWidth, h = strip.clientHeight;
+  canvas.width = Math.max(1, Math.round(w * dpr));
+  canvas.height = Math.max(1, Math.round(h * dpr));
+  var ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+
+  var cols = Math.max(40, Math.floor(w));
+  var buckets = [];
+  var i, k;
+  for (i = 0; i < cols; i++) buckets.push([0, 0, 0, 0, 0]);
+  var span = S.t1 - S.t0;
+  var peak = 1;
+  for (i = 0; i < S.rows.length; i++) {
+    var r = S.rows[i];
+    var x = Math.min(cols - 1, Math.max(0, Math.floor((r.ts - S.t0) / span * cols)));
+    var c = catOf(r);
+    buckets[x][c]++;
+    var tot = buckets[x][0] + buckets[x][1] + buckets[x][2] + buckets[x][3] + buckets[x][4];
+    if (tot > peak) peak = tot;
+  }
+  var colors = CATS.map(function (c) { return cssVar(c.v); });
+  var cw = w / cols;
+  var scale = h / Math.log(peak + 1);
+  for (i = 0; i < cols; i++) {
+    var y = h;
+    for (k = 0; k < 5; k++) {
+      var n = buckets[i][k];
+      if (!n) continue;
+      var hh = Math.max(1, Math.log(n + 1) * scale);
+      ctx.fillStyle = colors[k];
+      ctx.fillRect(i * cw, y - hh, Math.max(1, cw + 0.5), hh);
+      y -= hh;
+    }
+  }
+  /* baseline */
+  ctx.fillStyle = cssVar('--rule');
+  ctx.fillRect(0, h - 1, w, 1);
+}
+
+function layoutNet() {
+  netEl.style.left = (S.netA * 100) + '%';
+  netEl.style.width = ((S.netB - S.netA) * 100) + '%';
+}
+
+var drag = null;
+strip.addEventListener('pointerdown', function (e) {
+  if (!S.rows.length) return;
+  var rect = strip.getBoundingClientRect();
+  var f = (e.clientX - rect.left) / rect.width;
+  var onNet = e.target === netEl || (e.target.parentNode === netEl);
+  if (e.target.classList && e.target.classList.contains('grip')) {
+    drag = { mode: e.target.classList.contains('l') ? 'left' : 'right' };
+  } else if (onNet) {
+    drag = { mode: 'move', grab: f - S.netA, width: S.netB - S.netA };
+  } else {
+    drag = { mode: 'new', anchor: f };
+    S.netA = f; S.netB = f;
+  }
+  strip.setPointerCapture(e.pointerId);
+  e.preventDefault();
+});
+strip.addEventListener('pointermove', function (e) {
+  if (!drag) return;
+  var rect = strip.getBoundingClientRect();
+  var f = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
+  if (drag.mode === 'left') S.netA = Math.min(f, S.netB - 0.001);
+  else if (drag.mode === 'right') S.netB = Math.max(f, S.netA + 0.001);
+  else if (drag.mode === 'move') {
+    var a = Math.min(1 - drag.width, Math.max(0, f - drag.grab));
+    S.netA = a; S.netB = a + drag.width;
+  } else {
+    S.netA = Math.min(drag.anchor, f); S.netB = Math.max(drag.anchor, f);
+  }
+  layoutNet();
+  updateNetReadout();
+});
+strip.addEventListener('pointerup', function (e) {
+  if (!drag) return;
+  if (drag.mode === 'new' && (S.netB - S.netA) < 0.004) { S.netA = 0; S.netB = 1; layoutNet(); }
+  drag = null;
+  recompute();
+});
+strip.addEventListener('keydown', function () {});
+$('btnCast').addEventListener('click', function () { S.netA = 0; S.netB = 1; layoutNet(); recompute(); });
+window.addEventListener('resize', function () { drawStrip(); });
+
+function netBounds() {
+  var span = S.t1 - S.t0;
+  return { a: S.t0 + S.netA * span, b: S.t0 + S.netB * span };
+}
+function rowsInNet() {
+  if (S.netA <= 0 && S.netB >= 1) return S.rows;
+  var b = netBounds();
+  return S.rows.filter(function (r) { return r.ts >= b.a && r.ts <= b.b; });
+}
+function updateNetReadout() {
+  var b = netBounds();
+  var whole = (S.netA <= 0 && S.netB >= 1);
+  $('netRange').textContent = whole ? 'whole capture'
+    : (DN.stamp(b.a) + '  to  ' + DN.stamp(b.b) + '   (' + DN.secs((b.b - b.a) / 1000) + ')');
+  var n = rowsInNet();
+  $('netCount').textContent = n.length;
+  $('netBytes').textContent = DN.bytesHuman(n.reduce(function (s, r) { return s + r.origlen; }, 0));
+}
+
+/* ---- recompute ------------------------------------------------------ */
+function recompute() {
+  var t0 = performance.now();
+  var view = rowsInNet();
+  S.view = view;
+  S.reasm = DN.reassemble(view, S.capture.packets);
+  S.all = DN.analyze(view, { name: S.capture ? S.capture.name : '', format: S.capture ? S.capture.format : '',
+                             reasm: S.reasm, defrag: S.defrag });
+  S.findings = DN.findings(S.all);
+  updateNetReadout();
+  renderCatch();
+  renderBreakdown();
+  renderLadder();
+  renderFindings();
+  renderPackets();
+  dbg('recomputed', view.length + ' packets in', (performance.now() - t0).toFixed(0) + ' ms');
+}
+
+/* ---- stations ------------------------------------------------------- */
+var tabs = Array.prototype.slice.call(document.querySelectorAll('.tab'));
+tabs.forEach(function (t) {
+  t.addEventListener('click', function () { selectStation(t.dataset.st); });
+});
+function selectStation(name) {
+  tabs.forEach(function (t) { t.setAttribute('aria-selected', String(t.dataset.st === name)); });
+  ['catch', 'breakdown', 'ladder', 'findings', 'packets'].forEach(function (s) {
+    $('st-' + s).hidden = (s !== name);
+  });
+  $('main').scrollTop = 0;
+}
+
+/* ---- catch ---------------------------------------------------------- */
+var CONV_COLS = [
+  { k: 'aHost', t: 'Address A' }, { k: 'aPort', t: 'Port', num: true },
+  { k: 'bHost', t: 'Address B' }, { k: 'bPort', t: 'Port', num: true },
+  { k: 'label', t: 'Reading' }, { k: 'state', t: 'State' },
+  { k: 'packets', t: 'Packets', num: true }, { k: 'bytes', t: 'Bytes', num: true },
+  { k: 'aToB', t: 'A to B', num: true }, { k: 'bToA', t: 'B to A', num: true },
+  { k: 'duration', t: 'Duration', num: true }
+];
+
+function renderCatch() {
+  var A = S.all;
+  var stats = $('catchStats');
+  clear(stats);
+  [['Packets in the net', A.packets],
+   ['Bytes on the wire', DN.bytesHuman(A.bytes)],
+   ['Bytes actually captured', DN.bytesHuman(A.capturedBytes)],
+   ['Time span', DN.secs(A.span)],
+   ['Average rate', A.span > 0 ? DN.bytesHuman(A.bytes / A.span) + '/s' : 'n/a'],
+   ['Distinct addresses', A.hosts.length],
+   ['Conversations', A.convs.length]
+  ].forEach(function (p) {
+    var row = el('div', 'stat');
+    row.appendChild(el('span', null, p[0]));
+    row.appendChild(el('span', null, String(p[1])));
+    stats.appendChild(row);
+  });
+
+  var th = $('topHosts');
+  clear(th);
+  if (!A.hosts.length) { th.appendChild(el('div', 'empty', 'No addressed traffic in the net.')); }
+  A.hosts.slice(0, 8).forEach(function (h) {
+    var row = el('div', 'stat');
+    row.appendChild(el('span', null, h.host + '  (' + h.peerCount + ' peers)'));
+    row.appendChild(el('span', null, DN.bytesHuman(h.bytes)));
+    th.appendChild(row);
+    var bar = el('div', 'bar');
+    var fill = el('i');
+    fill.style.width = Math.max(1, h.bytes / A.hosts[0].bytes * 100) + '%';
+    bar.appendChild(fill);
+    th.appendChild(bar);
+  });
+
+  var table = $('convTable');
+  var thead = table.tHead, tbody = table.tBodies[0];
+  clear(thead); clear(tbody);
+  var hr = thead.insertRow();
+  CONV_COLS.forEach(function (c) {
+    var cell = el('th', c.num ? 'num' : null, c.t + (S.sortKey === c.k ? (S.sortDir < 0 ? '  \u25be' : '  \u25b4') : ''));
+    cell.tabIndex = 0;
+    cell.setAttribute('role', 'button');
+    function sortNow() {
+      if (S.sortKey === c.k) S.sortDir = -S.sortDir; else { S.sortKey = c.k; S.sortDir = -1; }
+      renderCatch();
+    }
+    cell.addEventListener('click', sortNow);
+    cell.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); sortNow(); } });
+    hr.appendChild(cell);
+  });
+
+  var list = A.convs.slice();
+  list.sort(function (x, y) {
+    var a = x[S.sortKey], b = y[S.sortKey];
+    if (a == null) a = ''; if (b == null) b = '';
+    if (typeof a === 'number' && typeof b === 'number') return (a - b) * S.sortDir;
+    return String(a).localeCompare(String(b)) * S.sortDir;
+  });
+
+  if (!list.length) {
+    var tr0 = tbody.insertRow();
+    var td0 = tr0.insertCell();
+    td0.colSpan = CONV_COLS.length;
+    td0.appendChild(el('div', 'empty', 'No conversations inside the net. Widen it on the drag bar.'));
+    return;
+  }
+  list.slice(0, 1500).forEach(function (c) {
+    var tr = tbody.insertRow();
+    tr.tabIndex = 0;
+    if (S.selectedConv === c.key) tr.setAttribute('aria-selected', 'true');
+    CONV_COLS.forEach(function (col) {
+      var td = tr.insertCell();
+      if (col.num) td.className = 'num';
+      var v = c[col.k];
+      if (col.k === 'bytes') td.textContent = DN.bytesHuman(v);
+      else if (col.k === 'duration') td.textContent = DN.secs(v);
+      else if (col.k === 'label') {
+        var cls = 'chip c-' + (c.transport === 'TCP' ? 'tcp' : c.transport === 'UDP' ? 'udp' : c.transport === 'ARP' ? 'arp' : c.transport && c.transport.indexOf('ICMP') === 0 ? 'icmp' : 'other');
+        td.appendChild(el('span', cls, String(v)));
+      } else td.textContent = (v == null || v === '') ? '\u2014' : String(v);
+    });
+    function open() { S.selectedConv = c.key; renderCatch(); renderLadder(); selectStation('ladder'); }
+    tr.addEventListener('click', open);
+    tr.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); open(); } });
+  });
+}
+
+/* ---- breakdown ------------------------------------------------------ */
+var LAYER_NAMES = {
+  eth: 'Ethernet', sll: 'Linux cooked', sll2: 'Linux cooked v2', lo: 'Loopback',
+  ip4: 'IPv4', ip6: 'IPv6', arp: 'ARP', rarp: 'RARP', lldp: 'LLDP', llc: 'LLC', pppoe: 'PPPoE',
+  tcp: 'TCP', udp: 'UDP', icmp: 'ICMP', icmp6: 'ICMPv6', igmp: 'IGMP',
+  dns: 'DNS', mdns: 'mDNS', tls: 'TLS', http: 'HTTP', dhcp: 'DHCP', ssdp: 'SSDP', ntp: 'NTP',
+  nbns: 'NetBIOS name service', unhandled: 'Not dissected'
+};
+function renderBreakdown() {
+  var A = S.all;
+  var root = $('protoTree');
+  clear(root);
+  var total = A.packets || 1;
+
+  function build(node, parent) {
+    var keys = Object.keys(node).sort(function (a, b) { return node[b]._n - node[a]._n; });
+    keys.forEach(function (k) {
+      var e = node[k];
+      var li = el('li');
+      var line = el('div', 'tline');
+      var name = el('b', null, LAYER_NAMES[k] || k.toUpperCase());
+      var right = el('em', null, e._n + ' pkt  \u00b7  ' + DN.bytesHuman(e._b) + '  \u00b7  ' + (e._n / total * 100).toFixed(1) + '%');
+      line.appendChild(name); line.appendChild(right);
+      li.appendChild(line);
+      var bar = el('div', 'bar');
+      var fill = el('i');
+      fill.style.width = (e._n / total * 100) + '%';
+      bar.appendChild(fill);
+      li.appendChild(bar);
+      if (Object.keys(e.kids).length) {
+        var ul = el('ul');
+        build(e.kids, ul);
+        li.appendChild(ul);
+      }
+      parent.appendChild(li);
+    });
+  }
+  if (!Object.keys(A.tree).length) root.appendChild(el('li', 'empty', 'Nothing to break down.'));
+  else build(A.tree, root);
+  renderAir();
+
+  var pt = $('portTable');
+  clear(pt);
+  if (!A.ports.length) pt.appendChild(el('div', 'empty', 'No ports in the net.'));
+  A.ports.slice(0, 14).forEach(function (p) {
+    var row = el('div', 'stat');
+    row.appendChild(el('span', null, p.transport + '/' + p.port + (p.name ? '  ' + p.name : '')));
+    row.appendChild(el('span', null, DN.bytesHuman(p.bytes) + '  (' + p.packets + ')'));
+    pt.appendChild(row);
+  });
+
+  var sp = $('sizeProfile');
+  clear(sp);
+  var buckets = [['64 bytes and under', S.all.sizes.tiny], ['65 to 256', S.all.sizes.small],
+                 ['257 to 768', S.all.sizes.mid], ['769 to 1514', S.all.sizes.big], ['above 1514', S.all.sizes.jumbo]];
+  var peak = Math.max.apply(null, buckets.map(function (b) { return b[1]; })) || 1;
+  buckets.forEach(function (b) {
+    var row = el('div', 'stat');
+    row.appendChild(el('span', null, b[0]));
+    row.appendChild(el('span', null, String(b[1])));
+    sp.appendChild(row);
+    var bar = el('div', 'bar'), fill = el('i');
+    fill.style.width = (b[1] / peak * 100) + '%';
+    bar.appendChild(fill); sp.appendChild(bar);
+  });
+  var note = el('p', null, A.packets ?
+    'Small packets dominating usually means control traffic or interactive sessions. A wall of full sized frames means bulk transfer.' :
+    'Nothing in the net.');
+  note.style.color = 'var(--ink-dim)';
+  note.style.marginBottom = '0';
+  sp.appendChild(note);
+}
+
+/* ---- ladder --------------------------------------------------------- */
+function renderLadder() {
+  var wrap = $('ladder');
+  clear(wrap);
+  var A = S.all;
+  var c = null;
+  if (S.selectedConv) c = A.convs.filter(function (x) { return x.key === S.selectedConv; })[0];
+  if (!c) c = A.convs[0];
+  if (!c) {
+    $('ladderTitle').textContent = 'Timing ladder';
+    $('ladderEnds').textContent = '';
+    wrap.appendChild(el('div', 'empty', 'Pick a conversation on the Catch station to draw its ladder.'));
+    $('streamCard').hidden = true;
+    return;
+  }
+  var aName = c.aHost + (c.aPort != null ? ':' + c.aPort : '');
+  var bName = c.bHost + (c.bPort != null ? ':' + c.bPort : '');
+  $('ladderTitle').textContent = 'Timing ladder  \u00b7  ' + c.transport + '  \u00b7  ' + aName + '  and  ' + bName;
+  $('ladderEnds').textContent = aName + '          \u2194          ' + bName;
+
+  var rows = c.rows;
+  var shown = rows.slice(0, 600);
+  var t0 = shown.length ? shown[0].ts : 0;
+  var prev = t0;
+  shown.forEach(function (r) {
+    var rung = el('div', 'rung');
+    var gap = (r.ts - prev) / 1000;
+    prev = r.ts;
+    var t = el('div', 't', '+' + DN.secs((r.ts - t0) / 1000));
+    t.title = DN.stamp(r.ts) + (gap > 0 ? '   gap ' + DN.secs(gap) : '');
+    var mid = el('div', 'arrow ' + (r.fromA ? 'fwd' : 'rev'));
+    if (r.flags && r.flags.indexOf('RST') >= 0) mid.classList.add('flag-rst');
+    else if (r.flags && r.flags.indexOf('SYN') >= 0) mid.classList.add('flag-syn');
+    mid.appendChild(el('div', 'line'));
+    mid.appendChild(el('div', 'head'));
+    var label = r.info || r.label;
+    if (r.seg && r.seg !== 'in order') label = label + '   [' + r.seg + ']';
+    var lbl = el('div', 'lbl', label);
+    lbl.title = label;
+    mid.appendChild(lbl);
+    var by = el('div', 'b', String(r.len));
+    rung.appendChild(t); rung.appendChild(mid); rung.appendChild(by);
+    wrap.appendChild(rung);
+  });
+  if (rows.length > shown.length) {
+    wrap.appendChild(el('div', 'empty', 'Showing the first ' + shown.length + ' of ' + rows.length + ' packets. Narrow the net to see the rest.'));
+  }
+  var summary = el('p', null,
+    plainConv(c));
+  summary.style.color = 'var(--ink-dim)';
+  summary.style.marginTop = '12px';
+  wrap.appendChild(summary);
+  renderStream(c);
+}
+
+/* ---- the air --------------------------------------------------------- */
+var AP_COLS = ['Network', 'Radio', 'Channel', 'Band', 'Security', 'Signal', 'Beacons', 'Clients'];
+
+function renderAir() {
+  var A = S.all, card = $('airCard');
+  if (!A.wifi) { card.hidden = true; return; }
+  card.hidden = false;
+
+  var tbl = $('apTable');
+  var thead = tbl.querySelector('thead'), tbody = tbl.querySelector('tbody');
+  clear(thead); clear(tbody);
+  var htr = el('tr');
+  AP_COLS.forEach(function (c) { htr.appendChild(el('th', null, c)); });
+  thead.appendChild(htr);
+
+  A.wifi.aps.forEach(function (ap) {
+    var tr = el('tr');
+    var name = ap.ssidList.length ? ap.ssidList.join(', ') : (ap.beacons ? '(hidden)' : '(not named here)');
+    var sec = ap.security || (ap.privacy ? 'WEP or unnamed suite' : (ap.beacons ? 'open' : ''));
+    [name, ap.bssid, ap.channel != null ? String(ap.channel) : '', ap.band || '',
+     sec, ap.avgSignal != null ? ap.avgSignal + ' dBm' : '',
+     String(ap.beacons), String(ap.clientCount)].forEach(function (v, i) {
+      var td = el('td', null, v);
+      if (i === 4 && /^open$/.test(v)) td.style.color = 'var(--warn)';
+      if (i === 4 && /WEP/.test(v)) td.style.color = 'var(--alert)';
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  });
+  if (!A.wifi.aps.length) {
+    var tr0 = el('tr');
+    var td0 = el('td', null, 'No access point named itself inside the net.');
+    td0.colSpan = AP_COLS.length;
+    tr0.appendChild(td0); tbody.appendChild(tr0);
+  }
+
+  var ex = $('airExtra');
+  clear(ex);
+  var lines = [];
+  lines.push(plural(A.wifi.frames, 'frame') + ' of 802.11 traffic' +
+    (A.wifi.badFcs ? ', ' + A.wifi.badFcs + ' with a failed checksum' : '') +
+    (A.wifi.encryptedData ? ', ' + A.wifi.encryptedData + ' encrypted on the air' : '') + '.');
+  if (A.wifi.probes.size) {
+    var t = [];
+    A.wifi.probes.forEach(function (set, mac) { if (set.size) t.push(mac + ': ' + Array.from(set).join(', ')); });
+    if (t.length) lines.push('Networks named in probe requests: ' + t.slice(0, 6).join('  |  ') + '.');
+  }
+  if (A.wifi.deauths.length) lines.push(plural(A.wifi.deauths.length, 'deauthentication or disassociation frame') + '.');
+  if (A.wifi.eapol.size) {
+    var full = 0;
+    A.wifi.eapol.forEach(function (set) { if (set.size >= 4) full++; });
+    lines.push(plural(A.wifi.eapol.size, 'four way handshake') + ' seen, ' + full + ' complete.');
+  }
+  lines.forEach(function (l) {
+    var p = el('p', 'fine', l);
+    p.style.color = 'var(--ink-dim)';
+    p.style.margin = '8px 0 0';
+    ex.appendChild(p);
+  });
+}
+
+/* ---- follow stream --------------------------------------------------- */
+var streamConv = null;
+
+function renderStream(c) {
+  var card = $('streamCard');
+  streamConv = c;
+  if (!c || !c.streams || !(c.streams.a.bytes || c.streams.b.bytes)) {
+    card.hidden = true;
+    return;
+  }
+  card.hidden = false;
+  var sel = $('streamDir');
+  var want = sel.value;
+  clear(sel);
+  [['a', c.aHost, c.bHost, c.streams.a], ['b', c.bHost, c.aHost, c.streams.b]].forEach(function (e) {
+    if (!e[3].bytes) return;
+    var o = document.createElement('option');
+    o.value = e[0];
+    o.textContent = e[1] + ' to ' + e[2] + '   (' + DN.bytesHuman(e[3].bytes) + ')';
+    sel.appendChild(o);
+  });
+  if (want && sel.querySelector('option[value="' + want + '"]')) sel.value = want;
+  drawStream();
+}
+
+function drawStream() {
+  var c = streamConv;
+  if (!c || !c.streams) return;
+  var side = $('streamDir').value || 'a';
+  var d = c.streams[side];
+  if (!d || !d.stream) return;
+
+  var stat = [DN.bytesHuman(d.bytes) + ' rebuilt from ' + plural(d.segments, 'segment')];
+  if (d.gaps.length) stat.push(plural(d.gaps.length, 'hole'));
+  if (d.retrans) stat.push(d.retrans + ' sent again');
+  if (d.ooo) stat.push(d.ooo + ' out of order');
+  if (d.isnGuessed) stat.push('capture started mid stream');
+  if (d.truncated) stat.push('truncated at the size ceiling');
+  $('streamStat').textContent = stat.join('  \u00b7  ');
+
+  var msgs = $('streamMsgs');
+  clear(msgs);
+  (d.messages || []).forEach(function (m) {
+    var box = el('div', 'msg ' + (m.kind === 'tls' ? 'tls' : (m.response ? 'res' : 'req')));
+    box.appendChild(el('div', 'h', m.kind === 'tls'
+      ? (m.record + (m.handshake ? ': ' + m.handshake : '') + (m.records ? '  \u00d7 ' + m.records : ''))
+      : (m.head || '(no start line)')));
+    var bits = [];
+    if (m.kind === 'http') {
+      if (m.host) bits.push('host ' + m.host);
+      if (m.status) bits.push('status ' + m.status);
+      if (m.contentType) bits.push(m.contentType.split(';')[0]);
+      if (m.bodyLen) bits.push('body ' + DN.bytesHuman(m.bodyLen) + (m.chunked ? ', chunked' : ''));
+      if (m.authorization) bits.push('carries ' + m.authorization + ' credentials');
+      if (m.hasCookie) bits.push('carries a cookie');
+    } else {
+      bits.push(DN.bytesHuman(m.len));
+      if (m.encrypted) bits.push('contents encrypted, not readable');
+    }
+    var line = el('div', 'm', bits.join('  \u00b7  '));
+    if (!m.complete) {
+      var w = el('span', 'warnflag', '   incomplete' + (m.note ? ': ' + m.note : ''));
+      line.appendChild(w);
+    }
+    box.appendChild(line);
+    msgs.appendChild(box);
+  });
+  if (!(d.messages || []).length) {
+    msgs.appendChild(el('p', 'fine', 'No application protocol was recognised in this direction. The bytes are below as they were sent.'));
+  }
+
+  var pre = $('streamBody');
+  clear(pre);
+  var mode = $('streamView').value;
+  var body = mode === 'hex' ? DN.streamHex(d.stream) : DN.streamText(d.stream);
+  if (!d.gaps.length) {
+    pre.textContent = body;
+  } else {
+    /* hole markers are drawn as their own inert lines, never spliced into the bytes */
+    var cursor = 0;
+    d.gaps.forEach(function (g) {
+      var upto = mode === 'hex' ? d.stream.length : g.from;
+      if (mode === 'text') {
+        pre.appendChild(document.createTextNode(DN.streamText(d.stream.subarray(cursor, g.from))));
+        pre.appendChild(el('span', 'gap', '\n[ ' + (g.to - g.from) + ' bytes were never captured ]\n'));
+        cursor = g.to;
+      }
+    });
+    if (mode === 'text') pre.appendChild(document.createTextNode(DN.streamText(d.stream.subarray(cursor))));
+    else {
+      pre.appendChild(el('span', 'gap', '[ ' + plural(d.gaps.length, 'hole') + ' in this stream, shown as zero bytes below ]\n'));
+      pre.appendChild(document.createTextNode(body));
+    }
+  }
+}
+
+$('streamDir').addEventListener('change', drawStream);
+$('streamView').addEventListener('change', drawStream);
+$('streamSave').addEventListener('click', function () {
+  var c = streamConv;
+  if (!c || !c.streams) return;
+  var side = $('streamDir').value || 'a';
+  var d = c.streams[side];
+  var from = side === 'a' ? c.aHost : c.bHost, to = side === 'a' ? c.bHost : c.aHost;
+  var name = baseName() + '-stream-' + from.replace(/[^0-9a-z]/gi, '_') + '-to-' + to.replace(/[^0-9a-z]/gi, '_') + '.txt';
+  var head = 'DRAGNET rebuilt stream\n' + from + ' to ' + to + '\n' +
+    DN.bytesHuman(d.bytes) + ' from ' + plural(d.segments, 'segment') +
+    (d.gaps.length ? ', ' + plural(d.gaps.length, 'hole') : '') + '\n' +
+    new Array(60).join('-') + '\n';
+  download(name, head + DN.streamText(d.stream, 4 * 1024 * 1024));
+});
+
+function plainConv(c) {
+  var s = [];
+  s.push(c.aHost + ' and ' + c.bHost + ' exchanged ' + c.packets + ' packets carrying ' + DN.bytesHuman(c.bytes) +
+    ' over ' + DN.secs(c.duration) + '.');
+  if (c.transport === 'TCP') {
+    if (c.state === 'closed') s.push('The connection was set up, used and closed cleanly.');
+    else if (c.state === 'no answer') s.push('The opening SYN was never answered, so the connection never formed.');
+    else if (c.state === 'refused') s.push('The far end answered with RST, so nothing was listening on that port.');
+    else if (c.state === 'reset') s.push('The connection was established then torn down with a reset rather than a clean close.');
+    else if (c.state === 'open') s.push('The connection was established and is still open at the edge of this slice.');
+  }
+  if (c.retrans) s.push(c.retrans + ' segments had to be sent again.');
+  if (c.appList.length) s.push('Payloads read as ' + c.appList.join(' and ') + '.');
+  var ratio = c.bytes ? (c.aBytes / c.bytes) : 0;
+  if (c.bytes > 2000) {
+    if (ratio > 0.8) s.push('Traffic ran almost entirely from ' + c.aHost + ' outward, which is the shape of an upload or a push.');
+    else if (ratio < 0.2) s.push('Traffic ran almost entirely toward ' + c.aHost + ', which is the shape of a download.');
+  }
+  return s.join(' ');
+}
+
+/* ---- findings -------------------------------------------------------- */
+function renderFindings() {
+  var F = S.findings;
+  var brief = $('brief');
+  clear(brief);
+  var h = el('h3', null, 'What happened here');
+  h.style.cssText = 'font-family:var(--sans);font-size:.78em;letter-spacing:.18em;text-transform:uppercase;color:var(--ink-faint);margin:0 0 8px';
+  brief.appendChild(h);
+  F.brief.forEach(function (p) { brief.appendChild(el('p', null, p)); });
+
+  var box = $('findings');
+  clear(box);
+  F.items.forEach(function (f) {
+    var d = el('div', 'finding sev-' + f.severity);
+    d.appendChild(el('div', 'tagline', f.severity === 'flag' ? 'Look at this' :
+      f.severity === 'watch' ? 'Worth a look' : f.severity === 'good' ? 'Clear' : 'For the record'));
+    d.appendChild(el('h4', null, f.title));
+    d.appendChild(el('p', null, f.text));
+    box.appendChild(d);
+  });
+}
+
+/* ---- packets --------------------------------------------------------- */
+function renderPackets() {
+  var table = $('pktTable');
+  var thead = table.tHead, tbody = table.tBodies[0];
+  clear(thead); clear(tbody);
+  var hr = thead.insertRow();
+  ['#', 'Time', 'Source', 'Destination', 'Reading', 'Length', 'Detail'].forEach(function (t, i) {
+    var th = el('th', (i === 0 || i === 5) ? 'num' : null, t);
+    hr.appendChild(th);
+  });
+  var view = S.view || [];
+  if (!view.length) {
+    var tr0 = tbody.insertRow(); var td0 = tr0.insertCell();
+    td0.colSpan = 7; td0.appendChild(el('div', 'empty', 'No packets in the net.'));
+    return;
+  }
+  var t0 = view[0].ts;
+  view.slice(0, 3000).forEach(function (r) {
+    var tr = tbody.insertRow();
+    function cell(text, cls) { var td = tr.insertCell(); if (cls) td.className = cls; td.textContent = text; return td; }
+    cell(String(r.i), 'num');
+    cell('+' + DN.secs((r.ts - t0) / 1000), 'num');
+    cell(r.src || (r.macSrc || '\u2014'));
+    cell(r.dst || (r.macDst || '\u2014'));
+    var td = tr.insertCell();
+    var cls = 'chip c-' + (r.transport === 'TCP' ? 'tcp' : r.transport === 'UDP' ? 'udp' : r.proto === 'ARP' ? 'arp' : (r.proto || '').indexOf('ICMP') === 0 ? 'icmp' : 'other');
+    td.appendChild(el('span', cls, r.app || r.proto));
+    cell(String(r.origlen), 'num');
+    var d = cell(r.info || '');
+    d.style.whiteSpace = 'nowrap';
+    d.style.maxWidth = '48ch';
+    d.style.overflow = 'hidden';
+    d.style.textOverflow = 'ellipsis';
+    d.title = r.info || '';
+  });
+}
+
+/* ---- exports --------------------------------------------------------- */
+function download(name, text, mime) {
+  var blob = new Blob([text], { type: mime || 'text/plain;charset=utf-8' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url; a.download = name;
+  document.body.appendChild(a); a.click();
+  setTimeout(function () { URL.revokeObjectURL(url); a.remove(); }, 1000);
+  dbg('exported', name, text.length + ' chars');
+}
+function baseName() {
+  var n = (S.capture && S.capture.name) || 'capture';
+  return n.replace(/\.[a-z0-9]+$/i, '').replace(/[^A-Za-z0-9._-]+/g, '-');
+}
+
+$('expJson').addEventListener('click', function () {
+  var A = S.all, F = S.findings;
+  var doc = {
+    tool: 'DRAGNET', version: DN.VERSION, exported: new Date().toISOString(),
+    capture: { name: S.capture.name, format: S.capture.format, linktype: S.capture.linktype,
+               linktypeName: DN.LINKTYPES[S.capture.linktype] || null, packetsInFile: S.capture.packets.length,
+               truncated: !!S.capture.truncated, warnings: S.capture.warnings },
+    net: { start: A.start ? new Date(A.start).toISOString() : null,
+           end: A.end ? new Date(A.end).toISOString() : null,
+           packets: A.packets, bytes: A.bytes, spanSeconds: A.span },
+    hosts: A.hosts.map(function (h) {
+      return { host: h.host, packets: h.packets, bytes: h.bytes, packetsIn: h.pktIn, packetsOut: h.pktOut, peers: h.peerCount };
+    }),
+    conversations: A.convs.map(function (c) {
+      return { transport: c.transport, a: c.aHost, aPort: c.aPort, b: c.bHost, bPort: c.bPort,
+               reading: c.label, state: c.state, packets: c.packets, bytes: c.bytes,
+               aToB: c.aToB, bToA: c.bToA, durationSeconds: c.duration, retransmissions: c.retrans };
+    }),
+    services: A.ports,
+    names: { dns: A.dns.map(function (d) { return { name: d.name, type: d.type, response: !!d.qr }; }),
+             tls: A.sni.map(function (s) { return { sni: s.name, client: s.client, server: s.server }; }),
+             http: A.http },
+    health: { retransmissions: A.retrans, resets: A.resets, outOfOrder: A.outOfOrder,
+              unansweredSyns: A.unansweredSyns, refusedSyns: A.refusedSyns,
+              dissectErrors: A.dissectErrors },
+    reassembly: A.reasm ? {
+      streams: A.reasm.streams, bytesRebuilt: A.reasm.bytes, holes: A.reasm.gaps,
+      retransmissions: A.reasm.retrans, fastRetransmissions: A.reasm.fastRetrans,
+      spuriousRetransmissions: A.reasm.spurious, outOfOrder: A.reasm.ooo,
+      keepAlives: A.reasm.keepAlive, overlaps: A.reasm.overlap,
+      fragmentedDatagramsRebuilt: A.defrag ? A.defrag.datagrams : 0,
+      fragmentGroupsIncomplete: A.defrag ? A.defrag.incomplete : 0
+    } : null,
+    air: A.wifi ? {
+      frames: A.wifi.frames, badChecksums: A.wifi.badFcs, encryptedDataFrames: A.wifi.encryptedData,
+      accessPoints: A.wifi.aps.map(function (ap) {
+        return { bssid: ap.bssid, ssids: ap.ssidList, channel: ap.channel, band: ap.band,
+                 security: ap.security, privacy: ap.privacy, beacons: ap.beacons,
+                 probeResponses: ap.probeResps, clients: ap.clientCount, averageSignalDbm: ap.avgSignal };
+      }),
+      probeRequests: Array.from(A.wifi.probes.entries()).map(function (e) {
+        return { device: e[0], networksNamed: Array.from(e[1]) };
+      }),
+      deauthentications: A.wifi.deauths.length,
+      handshakes: Array.from(A.wifi.eapol.entries()).map(function (e) {
+        return { pair: e[0], messagesSeen: Array.from(e[1]).sort(), complete: e[1].size >= 4 };
+      })
+    } : null,
+    findings: { brief: F.brief, items: F.items }
+  };
+  download(baseName() + '-dragnet.json', JSON.stringify(doc, null, 2), 'application/json');
+});
+
+$('expTxt').addEventListener('click', function () {
+  var A = S.all, F = S.findings, L = [];
+  function rule(ch) { L.push(new Array(72).join(ch || '-')); }
+  L.push('DRAGNET CAPTURE REPORT');
+  rule('=');
+  L.push('Capture      : ' + S.capture.name);
+  L.push('Format       : ' + S.capture.format + ', ' + (DN.LINKTYPES[S.capture.linktype] || ('link type ' + S.capture.linktype)));
+  L.push('Slice        : ' + (A.start ? DN.stamp(A.start) : 'no time') + '  to  ' + (A.end ? DN.stamp(A.end) : 'no time'));
+  L.push('In the net   : ' + A.packets + ' packets, ' + DN.bytesHuman(A.bytes) + ', ' + DN.secs(A.span));
+  L.push('Written by   : Dragnet v' + DN.VERSION + ' on ' + new Date().toLocaleString());
+  L.push('');
+  L.push('WHAT HAPPENED HERE');
+  rule();
+  F.brief.forEach(function (p) { L.push(p); L.push(''); });
+  L.push('FINDINGS');
+  rule();
+  F.items.forEach(function (f, i) {
+    L.push((i + 1) + '. [' + f.severity.toUpperCase() + '] ' + f.title);
+    L.push('   ' + f.text);
+    L.push('');
+  });
+  L.push('TOP CONVERSATIONS');
+  rule();
+  A.convs.slice(0, 25).forEach(function (c) {
+    L.push(c.transport + '  ' + c.aHost + (c.aPort != null ? ':' + c.aPort : '') +
+      '  <->  ' + c.bHost + (c.bPort != null ? ':' + c.bPort : '') +
+      '   ' + c.packets + ' pkt, ' + DN.bytesHuman(c.bytes) + ', ' + DN.secs(c.duration) +
+      (c.state ? ', ' + c.state : '') + (c.label ? ', ' + c.label : ''));
+  });
+  L.push('');
+  L.push('BUSIEST ADDRESSES');
+  rule();
+  A.hosts.slice(0, 20).forEach(function (h) {
+    L.push(h.host + '   ' + h.packets + ' pkt, ' + DN.bytesHuman(h.bytes) + ', ' + h.peerCount + ' peers');
+  });
+  L.push('');
+  L.push('SERVICES SEEN');
+  rule();
+  A.ports.slice(0, 25).forEach(function (p) {
+    L.push(p.transport + '/' + p.port + (p.name ? '  ' + p.name : '') + '   ' + p.packets + ' pkt, ' + DN.bytesHuman(p.bytes));
+  });
+  L.push('');
+  if (A.wifi) {
+    L.push('THE AIR');
+    rule();
+    A.wifi.aps.forEach(function (ap) {
+      L.push((ap.ssidList.join(', ') || (ap.beacons ? '(hidden)' : '(not named)')) +
+        '   ' + ap.bssid + (ap.channel != null ? '   channel ' + ap.channel : '') +
+        (ap.band ? '   ' + ap.band : '') +
+        '   ' + (ap.security || (ap.privacy ? 'WEP or unnamed suite' : 'open')) +
+        (ap.avgSignal != null ? '   ' + ap.avgSignal + ' dBm' : '') +
+        '   ' + ap.beacons + ' beacons, ' + ap.clientCount + ' clients');
+    });
+    A.wifi.probes.forEach(function (set, mac) {
+      if (set.size) L.push('probe requests from ' + mac + ': ' + Array.from(set).join(', '));
+    });
+    if (A.wifi.deauths.length) L.push(plural(A.wifi.deauths.length, 'deauthentication or disassociation frame'));
+    A.wifi.eapol.forEach(function (set, k) {
+      L.push('four way handshake ' + k + ': messages ' + Array.from(set).sort().join(',') + (set.size >= 4 ? ' (complete)' : ' (partial)'));
+    });
+    L.push('');
+  }
+  if (A.reasm && A.reasm.streams) {
+    L.push('REASSEMBLY');
+    rule();
+    L.push(plural(A.reasm.streams, 'stream') + ' rebuilt from ' + DN.bytesHuman(A.reasm.bytes) +
+      ', ' + plural(A.reasm.gaps, 'hole') + ' left where bytes were never captured');
+    L.push(A.reasm.retrans + ' retransmitted, ' + A.reasm.fastRetrans + ' fast, ' +
+      A.reasm.spurious + ' spurious, ' + A.reasm.ooo + ' out of order, ' + A.reasm.keepAlive + ' keep alive');
+    if (A.defrag && A.defrag.fragments) {
+      L.push(plural(A.defrag.datagrams, 'datagram') + ' rebuilt from ' + plural(A.defrag.fragments, 'IP fragment') +
+        ', ' + A.defrag.incomplete + ' group(s) left incomplete');
+    }
+    L.push('');
+  }
+  L.push('Payload bytes are never written into a Dragnet export.');
+  L.push('The Follow stream panel saves payload separately, on purpose and one stream at a time.');
+  L.push('GPL-3.0');
+  download(baseName() + '-dragnet-report.txt', L.join('\n'));
+});
+
+$('expCsv').addEventListener('click', function () {
+  var rows = [['transport', 'address_a', 'port_a', 'address_b', 'port_b', 'reading', 'state',
+               'packets', 'bytes', 'a_to_b', 'b_to_a', 'duration_seconds', 'retransmissions',
+               'out_of_order', 'stream_bytes', 'holes']];
+  S.all.convs.forEach(function (c) {
+    rows.push([c.transport, c.aHost, c.aPort == null ? '' : c.aPort, c.bHost, c.bPort == null ? '' : c.bPort,
+               c.label, c.state, c.packets, c.bytes, c.aToB, c.bToA, c.duration.toFixed(6), c.retrans,
+               c.ooo || 0, c.streamBytes || 0, c.gaps || 0]);
+  });
+  var csv = rows.map(function (r) {
+    return r.map(function (v) {
+      var s = String(v);
+      return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+    }).join(',');
+  }).join('\n');
+  download(baseName() + '-conversations.csv', csv, 'text/csv;charset=utf-8');
+});
+
+/* ---- keyboard shortcuts ---------------------------------------------- */
+document.addEventListener('keydown', function (e) {
+  if (e.target.matches('input, select, textarea')) return;
+  if (e.key >= '1' && e.key <= '5') {
+    var names = ['catch', 'breakdown', 'ladder', 'findings', 'packets'];
+    if ($('rail').hidden) return;
+    selectStation(names[parseInt(e.key, 10) - 1]);
+  }
+  if (e.key === '0' && !$('dragbar').hidden) { S.netA = 0; S.netB = 1; layoutNet(); recompute(); }
+});
+
+dbg('dragnet ready');
+})();
+</script>
+</body>
+</html>
