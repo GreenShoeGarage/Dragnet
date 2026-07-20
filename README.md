@@ -1,7 +1,7 @@
 # DRAGNET
 
 **Field Instrument FI-123**
-Offline packet capture reader. Version 1.2.0.
+Offline packet capture reader. Version 1.5.0.
 
 Drop a `.pcap` or `.pcapng` on the page and get conversations, a protocol
 breakdown, a timing ladder, and a plain-language account of what the traffic
@@ -31,8 +31,9 @@ the About panel, and it only fires if you click it.
 | **Ladder** | One conversation drawn as a timing ladder: offset, direction, reading, byte count, plus a written summary of how the exchange went. Below it, **Follow stream**: the reassembled bytes of either direction as text or hex, with the application messages listed above them. |
 | **Findings** | The written pass. An opening brief, then itemised findings sorted worst first. |
 | **Packets** | The flat list, for when you want to see the raw order of events. |
+| **Evidence** | What the capture is worth after the reading: engagement details, named assets, carved files with hashes, certificates, voice streams, the baseline comparison, and the session file. |
 
-Keys `1` through `5` jump between stations. `0` casts the whole net.
+Keys `1` through `6` jump between stations. `0` casts the whole net.
 
 ## The drag bar
 
@@ -47,6 +48,31 @@ the net.
 
 Every station recomputes from whatever is inside the net. This is how you take
 a five hour capture and ask what was happening in one particular ninety seconds.
+
+## Scale
+
+The reader does not dissect the whole file. It walks the packet headers once,
+recording only where each packet sits, how long it is, when it arrived and a
+shallow classification for the drag bar. Full dissection happens for the net
+and nowhere else.
+
+On a 600,000 packet, 42 MB capture that comes out as:
+
+| Step | Time |
+| --- | --- |
+| Read and index the file | about 0.3 s |
+| Draw the drag bar | 20 ms |
+| Dissect, analyse and write findings for a 30,000 packet net | about 0.75 s |
+
+The whole-file cost stays flat because the packets are never built until
+something asks for one. The index tops out at five million packets; a single
+net dissects at most three hundred thousand, and says so plainly when it is
+holding back rather than quietly truncating.
+
+Drop several files at once and they are read as one timeline, which is how a
+ring buffer capture actually arrives. Mixed link types are allowed and each
+packet is dissected by its own file's link type, with a warning saying the set
+is mixed.
 
 ## What it reads
 
@@ -85,6 +111,39 @@ authentication algorithm and status. Unencrypted data frames are unwrapped
 through LLC and SNAP and handed back to the ordinary dissectors, so ARP and IP
 over the air read exactly as they do over a cable. EAPOL key frames are
 recognised and numbered one through four across the handshake.
+
+## Reading deeper
+
+**TLS.** Handshake messages are reassembled across records before parsing,
+which is the only way a certificate chain is readable at all. Client hellos
+give up the requested name, the offered versions, the cipher list and a JA3
+fingerprint computed exactly as the specification defines it, so it can be
+compared with anyone else's. Server hellos give the negotiated version and
+cipher, with weak suites named as weak. Certificates are walked in DER: subject,
+issuer, validity, key type and size, curve, signature algorithm, subject
+alternative names, and a SHA-256 fingerprint of the certificate itself.
+Verified against real openssl output rather than only against test fixtures.
+
+A TLS 1.3 session encrypts its own certificate. Dragnet says so where a naive
+reader would leave a suspicious blank.
+
+**Carving.** Files are pulled whole out of cleartext streams, de-chunked where
+the transfer was chunked, typed by magic number rather than by extension or by
+what the server claimed, and hashed with SHA-256 and MD5. A file that does not
+match its declared type is flagged, and so is an executable fetched over plain
+HTTP, because that is the one anyone on the path can swap.
+
+Both hashes are written out longhand in the page. A file opened from disk has
+no access to the browser crypto API, and this file must keep working from disk.
+
+**Everything else.** DHCP with hostnames, vendor class and leases; SNMP with
+the community string that is doing duty as a password; SMB1 and SMB2 with
+share names off the tree connect; LDAP simple binds, which put a password in
+the request as plain bytes; Kerberos principals, realms and the encryption
+types still on offer; SIP call setup with the numbers and the call id; RTP
+recognised by shape rather than by port, with codec, sequence loss and, for
+G.711, a WAV file you can listen to; QUIC read as far as it lets anyone read,
+which is the version and the connection identifiers and no further.
 
 ## Reassembly
 
@@ -158,13 +217,47 @@ correct and the byte view is short, and the findings say so.
 Findings are ranked, not scored. DRAGNET will tell you what it saw and why it
 matters, and leaves the judgement to you.
 
+## Evidence
+
+Reading a capture is half the job. The Evidence station is the other half.
+
+- **Engagement details.** Client, reference, operator, capture point. They
+  head the written report and travel in the session file.
+- **Named assets.** Give an address a name and every finding, every table and
+  the whole report start using it. A capture reads very differently when it
+  says the badge reader instead of 10.0.7.14.
+- **Carved files and certificates.** With hashes, so an artifact can be
+  discussed, compared and cited without the bytes leaving the machine. Saving
+  one writes it to disk deliberately, and the panel says so above the button.
+- **Voice streams.** G.711 saved as WAV, which is the plainest possible
+  demonstration that a call was not encrypted.
+- **Accepted findings.** Mark a finding accepted with a note about why, or
+  what was done about it. Accepted findings dim, sink to the bottom, and are
+  recorded as accepted in the report and every export. An audit that cannot
+  record a decision just produces the same list again next quarter.
+- **Baseline.** Load a session file from an earlier capture and the station
+  says what is new, what is gone and what is unchanged, across addresses,
+  listening services, ports and access points. That is the question most
+  people actually have: is this different from last time.
+- **Session file.** Engagement, names, acceptances and an inventory. No
+  payload, so it is safe to keep alongside a report and safe to hand to
+  someone else as a baseline.
+- **Test Bench export.** The same material shaped as evidence for a TEST BENCH
+  (FI-081) run, so a capture can be attached to a test as observation rather
+  than retyped.
+
 ## Exports
 
 All three cover the packets currently inside the net.
 
-- **Session JSON** for machine handoff
-- **Written report** as plain text, suitable for pasting into an engagement writeup
+- **Session JSON** for machine handoff, now carrying the engagement, asset
+  names, artifacts with hashes, certificates, TLS sessions, voice streams,
+  management protocol observations and which findings were accepted
+- **Written report** as plain text, suitable for pasting into an engagement
+  writeup, with named assets, carved files, certificates, voice and accepted
+  findings as their own sections
 - **Conversations CSV** for a spreadsheet
+- **Session file** and **Test Bench export** from the Evidence station
 
 Payload bytes are never written into these three exports. Only headers,
 summaries and counts leave the page. The JSON gained a `reassembly` section and
@@ -177,11 +270,11 @@ above the button, and it is never reachable from the export dialog.
 
 ## Self test
 
-The **Self test** button runs 161 assertions on demand: formatters, both
+The **Self test** button runs 274 assertions on demand: formatters, both
 container readers across both endiannesses, a pcapng round trip, every
 dissector, conversation keying, the analysis pass, and the findings engine.
 
-Three synthetic captures are built in memory to drive them. The original mixed
+Four synthetic captures are built in memory to drive them. The original mixed
 wired sample; a reassembly fixture with a request cut across three segments
 (with a header deliberately placed past the first one), a chunked response
 whose second chunk arrives before its first, a segment that was never captured
@@ -191,8 +284,24 @@ same name, an open network, a hidden one, a device calling out its history in
 probe requests, a complete four way handshake, ARP over the air, an encrypted
 frame and a deauthentication burst.
 
+And a deep fixture with an image split across segments, an executable served
+as text/plain, a TLS session whose certificate message is deliberately split
+across two records, an expired certificate signed with SHA-1 on a 1024 bit key,
+SNMP with a default community string, an LDAP simple bind, a Kerberos AS-REQ
+offering RC4, both SMB versions, DHCP, a SIP call with an RTP stream missing
+one packet, and a QUIC initial.
+
 The fixtures are part of the file, so the button works with no capture loaded
 and no network.
+
+Both hash implementations are checked against published test vectors, and the
+JA3 fingerprint is checked against the published reference pair, so a
+fingerprint from this tool can be compared with one from anywhere else.
+
+A separate headless run drives the page itself through 95 checks: every
+station, the drag bar, follow stream, the air panel, multi-file loading, every
+export, carved file and WAV saving, asset naming changing what the findings
+say, finding acceptance, session save and reload, and the baseline diff.
 
 ## Known Limitations
 
@@ -213,10 +322,20 @@ and no network.
   a malformed frame.
 - Link types beyond Ethernet, raw IP, Linux cooked, BSD loopback, radiotap,
   Prism and AVS are counted and named but not dissected.
-- Packet capture stops at 400,000 packets to protect browser memory, and files
-  above roughly 200 MB may fail to load at all depending on the browser. Cut
-  the file with `editcap` first.
-- The whole capture is held in memory. There is no streaming reader.
+- The reader indexes up to five million packets. A single net dissects at most
+  three hundred thousand, and says so rather than quietly truncating. Narrow
+  the net to read the rest.
+- Reassembly and defragmentation work on what is inside the net. A fragment or
+  a segment outside it is not pulled in.
+- The file bytes are held in memory, though the packets are not built until
+  something asks for one.
+- Carving works on cleartext only. Anything inside TLS is counted and
+  measured, never reconstructed.
+- A JA3 fingerprint identifies software, not a person and not an intent.
+- RTP is recognised by shape rather than by port, so an occasional UDP stream
+  may be misread as audio.
+- There is no QUIC decryption and no key log support, so a QUIC connection is
+  endpoints, timing and volume only.
 - Timestamps are taken at face value. Captures from a machine with a bad clock
   will produce a bad timeline, and pcapng simple packet blocks carry no time
   at all.

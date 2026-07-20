@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- DRAGNET :: dragnet.html :: v1.2.0 -->
+<!-- DRAGNET :: dragnet.html :: v1.5.0 -->
 <html lang="en" data-theme="night">
 <head>
 <meta charset="utf-8">
@@ -108,6 +108,38 @@ select.btn{text-transform:none;letter-spacing:0}
 }
 .net .grip.l{left:-2px} .net .grip.r{right:-2px}
 .netread{margin-top:5px;font-size:.78em;color:var(--ink-dim);display:flex;gap:16px;flex-wrap:wrap}
+
+/* ---- finding acceptance -------------------------------------------- */
+.finding.accepted{opacity:.62}
+.finding-foot{margin-top:10px}
+.accept-row{display:flex;gap:8px;flex-wrap:wrap}
+.accept-row input{flex:1;min-width:200px;padding:5px 8px;background:var(--panel2);
+  border:1px solid var(--rule);border-radius:2px;color:var(--ink)}
+.accept-note{margin:8px 0 0;font-size:.88em;color:var(--ok)}
+
+/* ---- evidence ------------------------------------------------------ */
+.eng-grid{display:grid;grid-template-columns:auto 1fr;gap:8px 12px;align-items:center;max-width:640px}
+.eng-grid label{font-size:.85em;color:var(--ink-dim)}
+.eng-grid input{padding:5px 8px;background:var(--panel2);border:1px solid var(--rule);border-radius:2px;color:var(--ink)}
+.asset-add{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+.asset-add select,.asset-add input{padding:5px 8px;background:var(--panel2);border:1px solid var(--rule);
+  border-radius:2px;color:var(--ink);min-height:32px}
+.asset-add input{min-width:180px}
+.cert{border:1px solid var(--rule);border-left-width:3px;border-radius:2px;padding:10px 12px;margin-bottom:10px}
+.cert.bad{border-left-color:var(--alert)}
+.cert.ok{border-left-color:var(--ok)}
+.cert h3{margin:0 0 6px;font-size:1em;color:var(--brass)}
+.cert dl{display:grid;grid-template-columns:auto 1fr;gap:2px 12px;margin:0;font-size:.86em}
+.cert dt{color:var(--ink-dim)}
+.cert dd{margin:0;word-break:break-all}
+.cert .bad-note{color:var(--alert)}
+.diff-new{color:var(--warn)} .diff-gone{color:var(--ink-faint)} .diff-same{color:var(--ink-dim)}
+
+/* ---- load progress ------------------------------------------------ */
+.loadbar{position:relative;height:20px;margin-top:6px;border:1px solid var(--rule);border-radius:2px;background:var(--panel2);overflow:hidden}
+.loadbar i{display:block;height:100%;width:0;background:var(--brass-dim);transition:width .12s linear}
+.loadbar span{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  font-size:11px;color:var(--ink);letter-spacing:.06em}
 
 /* ---- follow stream ------------------------------------------------ */
 .stream-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px}
@@ -249,7 +281,7 @@ footer{
 <body>
 
 <header class="mast">
-  <div class="wordmark"><b>Dragnet</b><span id="verline">FI-123 &middot; v1.2.0</span></div>
+  <div class="wordmark"><b>Dragnet</b><span id="verline">FI-123 &middot; v1.5.0</span></div>
   <div class="spacer"></div>
   <div class="mast-actions">
     <label class="btn primary" for="fileIn">Open capture</label>
@@ -270,6 +302,7 @@ footer{
   <h1>Drop a capture on this panel</h1>
   <p>DRAGNET reads libpcap and pcapng files entirely inside this page. Nothing is uploaded, and the file never leaves the machine.</p>
   <p class="fine">.pcap &middot; .pcapng &middot; .cap &middot; gzip of any of those</p>
+  <p class="fine">Drop several files at once and they are read as one timeline, which is how a ring buffer capture arrives.</p>
 </section>
 
 <section class="dragbar" id="dragbar" hidden>
@@ -288,7 +321,9 @@ footer{
     <span>Net: <b id="netRange">whole capture</b></span>
     <span>In the net: <b id="netCount">0</b> packets</span>
     <span id="netBytes"></span>
+    <span id="netCap" style="color:var(--warn)" hidden></span>
   </div>
+  <div class="loadbar" id="loadBar" hidden><i id="loadFill"></i><span id="loadNote"></span></div>
 </section>
 
 <nav class="rail" id="rail" hidden role="tablist">
@@ -297,6 +332,7 @@ footer{
   <button class="tab" role="tab" id="tab-ladder" data-st="ladder" aria-selected="false">Ladder</button>
   <button class="tab" role="tab" id="tab-findings" data-st="findings" aria-selected="false">Findings</button>
   <button class="tab" role="tab" id="tab-packets" data-st="packets" aria-selected="false">Packets</button>
+  <button class="tab" role="tab" id="tab-evidence" data-st="evidence" aria-selected="false">Evidence</button>
 </nav>
 
 <main id="main" hidden>
@@ -362,10 +398,88 @@ footer{
     <div class="wrap"><table id="pktTable"><thead></thead><tbody></tbody></table></div>
     <p class="fine" style="color:var(--ink-faint);margin-top:8px">Showing the first 3000 packets in the net.</p>
   </section>
+
+  <section class="station" id="st-evidence" role="tabpanel" aria-labelledby="tab-evidence" hidden>
+    <div class="card" id="engCard">
+      <h2>This engagement</h2>
+      <div class="eng-grid">
+        <label for="engClient">Client or site</label><input id="engClient" type="text" placeholder="not recorded">
+        <label for="engRef">Engagement reference</label><input id="engRef" type="text" placeholder="not recorded">
+        <label for="engOperator">Operator</label><input id="engOperator" type="text" placeholder="not recorded">
+        <label for="engWhere">Capture point</label><input id="engWhere" type="text" placeholder="where the tap was">
+      </div>
+      <p class="fine" style="color:var(--ink-faint);margin-top:8px">
+        These four lines go at the top of the written report and into the session file. They stay on this machine.
+      </p>
+    </div>
+
+    <div class="card" id="assetCard">
+      <h2>Named assets</h2>
+      <p class="fine" style="color:var(--ink-dim);margin:0 0 10px">
+        Give an address a name and the findings will use it. A capture reads very differently when it says the badge reader
+        instead of 10.0.7.14.
+      </p>
+      <div class="asset-add">
+        <select id="assetHost" aria-label="Address"></select>
+        <input id="assetName" type="text" placeholder="what this is" aria-label="Name">
+        <button class="btn" id="assetSave" type="button">Name it</button>
+      </div>
+      <div class="wrap"><table id="assetTable"><thead></thead><tbody></tbody></table></div>
+    </div>
+
+    <div class="card" id="carveCard" hidden>
+      <h2>Carved files</h2>
+      <p class="fine" style="color:var(--ink-dim);margin:0 0 10px">
+        Rebuilt whole out of streams that crossed in the clear. Hashes are computed here so a file can be discussed,
+        compared and cited without the bytes leaving this machine. Saving one writes the payload to disk on purpose.
+      </p>
+      <div class="wrap"><table id="carveTable"><thead></thead><tbody></tbody></table></div>
+    </div>
+
+    <div class="card" id="certCard" hidden>
+      <h2>Certificates seen</h2>
+      <div id="certList"></div>
+    </div>
+
+    <div class="card" id="voiceCard" hidden>
+      <h2>Voice streams</h2>
+      <div class="wrap"><table id="rtpTable"><thead></thead><tbody></tbody></table></div>
+      <p class="fine" style="color:var(--ink-faint);margin-top:8px">
+        G.711 is uncompressed telephone audio. Saving one of these writes a WAV file you can listen to, which is the
+        plainest possible demonstration that the call was not encrypted.
+      </p>
+    </div>
+
+    <div class="card" id="baselineCard">
+      <h2>Baseline</h2>
+      <p class="fine" style="color:var(--ink-dim);margin:0 0 10px">
+        Load a session file saved from an earlier capture and this station will say what is new, what is gone, and what
+        changed. That is the question most people actually have: is this different from last time.
+      </p>
+      <p>
+        <input type="file" id="baseIn" accept=".json" aria-label="Baseline session file">
+        <button class="btn" id="baseClear" type="button">Clear baseline</button>
+      </p>
+      <div id="baseOut"></div>
+    </div>
+
+    <div class="card">
+      <h2>Session</h2>
+      <p class="fine" style="color:var(--ink-dim);margin:0 0 10px">
+        A session file holds the engagement lines, the asset names, the findings you accepted and the inventory of this
+        capture. It carries no payload bytes, so it is safe to keep alongside a report.
+      </p>
+      <p>
+        <button class="btn" id="sessSave" type="button">Save session</button>
+        <input type="file" id="sessIn" accept=".json" aria-label="Session file">
+        <button class="btn" id="expBench" type="button">Export for Test Bench</button>
+      </p>
+    </div>
+  </section>
 </main>
 
 <footer>
-  <span>DRAGNET v1.2.0</span>
+  <span>DRAGNET v1.5.0</span>
   <span>GPL-3.0</span>
   <span>Runs from disk. Nothing leaves this machine.</span>
   <span class="spacer"></span>
@@ -378,9 +492,12 @@ footer{
 <dialog id="dlgAbout">
   <div class="dlg-head"><h2>About Dragnet</h2><span class="spacer" style="flex:1"></span><button class="btn" data-close>Close</button></div>
   <div class="dlg-body">
-    <p><b>DRAGNET</b> &middot; Field Instrument FI-123 &middot; version <b>1.2.0</b></p>
+    <p><b>DRAGNET</b> &middot; Field Instrument FI-123 &middot; version <b>1.5.0</b></p>
     <p>An offline reader for packet captures. Open a file, drag the net along the capture, and read what the traffic was doing.</p>
     <p>Since v1.1 it rebuilds TCP streams and IP fragments rather than reading one segment at a time, and since v1.2 it reads radiotap and 802.11, which is what lets it read a capture taken off the air.</p>
+    <p>v1.3 stopped dissecting the whole file. The reader walks the headers once to learn shape and time, and full dissection happens only for what is inside the net, which is what lets a capture of several million packets open at all. Several files can be dropped at once and are read as one timeline.</p>
+    <p>v1.4 reads deeper: TLS handshakes are reassembled so certificates can be read and checked, client hellos are fingerprinted, and files are carved whole out of cleartext streams and hashed. SNMP, SMB, LDAP, Kerberos, SIP, RTP, QUIC and DHCP are decoded far enough to say something useful about each.</p>
+    <p>v1.5 is about what happens after the reading. The Evidence station holds the engagement details, lets you give an address a name that the findings then use, records which findings you have accepted and why, compares this capture against a baseline session, and exports the lot for a Test Bench run.</p>
     <h3>License</h3>
     <p>GPL-3.0</p>
     <h3>Vendored libraries</h3>
@@ -389,18 +506,26 @@ footer{
     <ul>
       <li>The capture is read with the browser File API and stays in page memory.</li>
       <li>Exports are produced locally and saved by the browser download path.</li>
+      <li>Hashes are computed in the page with hand written SHA-256 and MD5, because a page opened from disk has no access to the browser crypto API.</li>
+      <li>The session file carries names, notes and hashes, never payload.</li>
       <li>Payload bytes are never written into the JSON, report or CSV exports, only summaries and headers.</li>
       <li>The Follow stream panel is the one exception, and only when you press its own save button: that file is payload by definition.</li>
     </ul>
     <h3>Known limitations</h3>
     <ul>
-      <li>Encrypted payloads are described, not decrypted. TLS reporting stops at the handshake, and 802.11 encrypted data frames are counted, not opened. There is no WEP or WPA decryption here and no key log support yet.</li>
+      <li>Encrypted payloads are described, not decrypted. Certificates and handshakes are read where the protocol leaves them in the clear, and nothing further. There is no WEP or WPA decryption, no QUIC decryption and no key log support.</li>
+      <li>A TLS 1.3 session encrypts its own certificate, so an empty certificate list there is normal rather than suspicious. The reader says so rather than leaving you to wonder.</li>
+      <li>Carving works on cleartext streams only. Anything inside TLS is counted and measured, never reconstructed.</li>
+      <li>A JA3 fingerprint identifies software, not people or intent. Two machines running the same browser build produce the same fingerprint.</li>
+      <li>Protocol recognition for RTP is by shape rather than by port, so an occasional UDP stream may be misread as audio. The codec and the sequence numbers are the check.</li>
       <li>Rebuilt streams are held whole in memory and stop at four megabytes per direction. Past that the counts stay right and the byte view is short.</li>
       <li>Stream decoding covers HTTP and the shape of TLS. Other application protocols are read one packet at a time.</li>
       <li>802.11 control frames carry fewer addresses than data frames, so some of them name only the receiver.</li>
       <li>Reading 802.11 needs a capture taken in monitor mode. A capture from an ordinary associated interface has already been turned into Ethernet frames by the driver.</li>
       <li>Link types beyond Ethernet, raw IP, Linux SLL, SLL2, BSD loopback, radiotap, Prism and AVS are counted but not dissected.</li>
-      <li>Very large captures are capped by available browser memory. Above roughly 200 MB, cut the file first.</li>
+      <li>The reader indexes up to five million packets and dissects at most three hundred thousand at a time. When a net holds more than that, it says so and reads the first three hundred thousand. Narrow the net to read the rest.</li>
+      <li>Fragment reassembly and stream rebuilding work on what is inside the net. A fragment or a segment outside it is not pulled in.</li>
+      <li>Named assets, accepted findings and engagement details are kept in this browser for the capture you have open, and in the session file you save. They are not identity, they are your notes.</li>
     </ul>
     <h3>Feedback</h3>
     <p>Send notes and captures that break it to the Field Instruments feedback channel at <a href="https://greenshoegarage.com" target="_blank" rel="noopener">greenshoegarage.com</a>.</p>
@@ -431,13 +556,13 @@ footer{
 
 <script>
 /* ====================================================================
-   DRAGNET v1.2.0  ::  core (pure, DOM free)
+   DRAGNET v1.5.0  ::  core (pure, DOM free)
    ==================================================================== */
 (function (global) {
 'use strict';
 
 var DN = {};
-DN.VERSION = '1.2.0';
+DN.VERSION = '1.5.0';
 
 /* ---- small helpers ------------------------------------------------ */
 function hex2(n){ return (n<16?'0':'') + n.toString(16); }
@@ -497,6 +622,72 @@ DN.LINKTYPES = {
    FILE READERS
    ==================================================================== */
 
+/* A capture is held as offsets into the file bytes, not as a packet per
+   object. Packets are built when something actually asks for one, which
+   is what lets a large file be opened without dissecting all of it.  */
+function PacketList(u8, linktype) {
+  this.u8 = u8;
+  this.linktype = linktype;
+  this.off = []; this.cap = []; this.orig = []; this.ts = []; this.lt = [];
+  this.length = 0;
+  this.refs = null;              /* set when this list is a merge of others */
+}
+PacketList.prototype.push = function (off, cap, orig, ts, lt) {
+  this.off.push(off); this.cap.push(cap); this.orig.push(orig); this.ts.push(ts);
+  this.lt.push(lt == null ? this.linktype : lt);
+  this.length++;
+};
+PacketList.prototype.seal = function () {
+  if (this.refs) return this;
+  this.off = Uint32Array.from(this.off);
+  this.cap = Uint32Array.from(this.cap);
+  this.orig = Uint32Array.from(this.orig);
+  this.ts = Float64Array.from(this.ts);
+  this.lt = Uint32Array.from(this.lt);
+  return this;
+};
+PacketList.prototype.get = function (i) {
+  if (i < 0 || i >= this.length) return null;
+  if (this.refs) {
+    var ref = this.refs[i];
+    var p = ref.list.get(ref.idx);
+    if (!p) return null;
+    p.i = i;
+    p.source = ref.name;
+    return p;
+  }
+  var o = this.off[i], c = this.cap[i];
+  return { i: i, ts: this.ts[i], caplen: c, origlen: this.orig[i],
+           bytes: this.u8.subarray(o, o + c), linktype: this.lt[i] };
+};
+PacketList.prototype.forEach = function (fn) {
+  for (var i = 0; i < this.length; i++) fn(this.get(i), i);
+};
+PacketList.prototype.map = function (fn) {
+  var out = new Array(this.length);
+  for (var i = 0; i < this.length; i++) out[i] = fn(this.get(i), i);
+  return out;
+};
+PacketList.prototype.slice = function (a, b) {
+  var out = [], n = Math.min(b == null ? this.length : b, this.length);
+  for (var i = Math.max(0, a || 0); i < n; i++) out.push(this.get(i));
+  return out;
+};
+PacketList.merged = function (lists) {
+  var pl = new PacketList(null, null);
+  pl.refs = [];
+  lists.forEach(function (entry) {
+    for (var i = 0; i < entry.list.length; i++) {
+      pl.refs.push({ list: entry.list, idx: i, name: entry.name, ts: entry.list.ts[i] });
+    }
+  });
+  pl.refs.sort(function (a, b) { return a.ts - b.ts; });
+  pl.length = pl.refs.length;
+  pl.ts = pl.refs.map(function (r) { return r.ts; });
+  return pl;
+};
+DN.PacketList = PacketList;
+
 /* classic libpcap ---------------------------------------------------- */
 DN.readPcap = function (buf, opts) {
   opts = opts || {};
@@ -512,9 +703,10 @@ DN.readPcap = function (buf, opts) {
     format: 'libpcap', endian: le ? 'little' : 'big', tsUnit: nano ? 'ns' : 'us',
     versionMajor: dv.getUint16(4, le), versionMinor: dv.getUint16(6, le),
     snaplen: dv.getUint32(16, le), linktype: dv.getUint32(20, le) & 0xffff,
-    packets: [], warnings: [], truncated: false
+    packets: null, warnings: [], truncated: false
   };
-  var max = opts.maxPackets || 400000;
+  out.packets = new PacketList(u8, out.linktype);
+  var max = opts.maxPackets || DN.MAX_INDEX;
   var p = 24, n = 0;
   while (p + 16 <= u8.length) {
     var tsSec = dv.getUint32(p, le);
@@ -527,16 +719,11 @@ DN.readPcap = function (buf, opts) {
       cap = u8.length - p;
       out.truncated = true;
     }
-    out.packets.push({
-      i: n,
-      ts: tsSec * 1000 + (nano ? tsSub / 1e6 : tsSub / 1e3),
-      caplen: cap, origlen: orig,
-      bytes: u8.subarray(p, p + cap),
-      linktype: out.linktype
-    });
+    out.packets.push(p, cap, orig, tsSec * 1000 + (nano ? tsSub / 1e6 : tsSub / 1e3), out.linktype);
     p += cap; n++;
     if (n >= max) { out.warnings.push('Stopped after ' + max + ' packets to protect browser memory.'); out.truncated = true; break; }
   }
+  out.packets.seal();
   return out;
 };
 
@@ -547,9 +734,10 @@ DN.readPcapng = function (buf, opts) {
   if (dv.getUint32(0, false) !== 0x0a0d0d0a) throw new Error('Not a pcapng file');
   var out = {
     format: 'pcapng', endian: null, tsUnit: 'variable', snaplen: 0,
-    linktype: null, packets: [], warnings: [], truncated: false, interfaces: []
+    linktype: null, packets: null, warnings: [], truncated: false, interfaces: []
   };
-  var max = opts.maxPackets || 400000;
+  out.packets = new PacketList(u8, 1);
+  var max = opts.maxPackets || DN.MAX_INDEX;
   var p = 0, le = true, n = 0, sections = 0;
 
   function readOpts(start, end) {
@@ -607,27 +795,20 @@ DN.readPcapng = function (buf, opts) {
       var ts = ticks / iface.tsdiv * 1000;
       var dstart = body + 20;
       if (cap2 > bodyEnd - dstart) { cap2 = Math.max(0, bodyEnd - dstart); out.truncated = true; }
-      out.packets.push({
-        i: n, ts: ts, caplen: cap2, origlen: orig2,
-        bytes: u8.subarray(dstart, dstart + cap2),
-        linktype: iface.linktype, iface: iface.name
-      });
+      out.packets.push(dstart, cap2, orig2, ts, iface.linktype);
       n++;
     } else if (blockType === 0x00000003) { /* simple packet */
       var orig3 = dv.getUint32(body, le);
       var iface3 = out.interfaces[0] || { linktype: out.linktype || 1, name: 'if0' };
       var cap3 = Math.min(orig3, bodyEnd - (body + 4));
-      out.packets.push({
-        i: n, ts: 0, caplen: cap3, origlen: orig3,
-        bytes: u8.subarray(body + 4, body + 4 + cap3),
-        linktype: iface3.linktype, iface: iface3.name, noTime: true
-      });
+      out.packets.push(body + 4, cap3, orig3, 0, iface3.linktype);
       n++;
     }
     p += blockLen;
     if (n >= max) { out.warnings.push('Stopped after ' + max + ' packets to protect browser memory.'); out.truncated = true; break; }
   }
   if (out.linktype === null) out.linktype = 1;
+  out.packets.seal();
   return out;
 };
 
@@ -1219,16 +1400,46 @@ function dissectAppLayer(b, o, r, tp) {
     try { decorateDns(b, o, r); } catch (e) { r.appNote = 'DNS parse gave up'; }
     return;
   }
-  if (sp === 67 || dp === 67 || sp === 68 || dp === 68) { r.app = 'DHCP'; r.stack.push('dhcp'); r.info = 'DHCP ' + r.info; return; }
+  if (sp === 67 || dp === 67 || sp === 68 || dp === 68) {
+    try { DN.dissectDhcp(b, o, r); } catch (e) { r.app = 'DHCP'; r.appNote = 'DHCP parse gave up'; }
+    return;
+  }
   if (sp === 1900 || dp === 1900) { r.app = 'SSDP'; r.stack.push('ssdp'); return; }
   if (sp === 123 || dp === 123) { r.app = 'NTP'; r.stack.push('ntp'); return; }
   if (sp === 137 || dp === 137) { r.app = 'NBNS'; r.stack.push('nbns'); return; }
+  if (sp === 161 || dp === 161 || sp === 162 || dp === 162) {
+    try { DN.dissectSnmp(b, o, r); } catch (e) { r.app = 'SNMP'; r.appNote = 'SNMP parse gave up'; }
+    return;
+  }
+  if (tp === 'udp' && (sp === 88 || dp === 88)) {
+    try { if (DN.dissectKerberos(b, o, r)) return; } catch (e) { /* not Kerberos after all */ }
+  }
+  if (tp === 'udp' && (sp === 5060 || dp === 5060 || sp === 5061 || dp === 5061)) {
+    try { DN.dissectSip(b, o, r); } catch (e) { r.app = 'SIP'; }
+    return;
+  }
+  if (tp === 'udp' && (sp === 443 || dp === 443 || sp === 80 || dp === 80)) {
+    try { if (DN.dissectQuic(b, o, r)) return; } catch (e) { /* not QUIC */ }
+  }
+  /* RTP has no fixed port, so it is recognised by shape on even high ports */
+  if (tp === 'udp' && sp >= 1024 && dp >= 1024 && (sp % 2 === 0 || dp % 2 === 0) && b.length - o >= 24) {
+    try { if (DN.dissectRtp(b, o, r)) return; } catch (e) { /* not RTP */ }
+  }
 
   /* TLS: content type 20..24, then a plausible version */
   if (tp === 'tcp' && b.length > o + 5 && b[o] >= 20 && b[o] <= 24 && b[o + 1] === 3 && b[o + 2] <= 4) {
     r.app = 'TLS'; r.stack.push('tls');
     try { decorateTls(b, o, r); } catch (e) { r.appNote = 'TLS parse gave up'; }
     return;
+  }
+  if (tp === 'tcp' && (sp === 445 || dp === 445 || sp === 139 || dp === 139)) {
+    try { if (DN.dissectSmb(b, o, r)) return; } catch (e) { /* not SMB */ }
+  }
+  if (tp === 'tcp' && (sp === 389 || dp === 389 || sp === 3268 || dp === 3268)) {
+    try { if (DN.dissectLdap(b, o, r)) return; } catch (e) { /* not LDAP */ }
+  }
+  if (tp === 'tcp' && (sp === 88 || dp === 88)) {
+    try { if (DN.dissectKerberos(b, o + 4, r)) return; } catch (e) { /* not Kerberos */ }
   }
   /* HTTP */
   if (tp === 'tcp' && b.length > o + 8) {
@@ -1259,6 +1470,302 @@ function dissectAppLayer(b, o, r, tp) {
   var known = DN.serviceName(sp, dp);
   if (known) { r.app = known; }
 }
+
+/* ====================================================================
+   MORE DECODERS
+   Each of these earns its place by producing something a person can act
+   on: a name, a credential in the clear, an obsolete protocol still in
+   service, a call that can be listened to.
+   ==================================================================== */
+
+/* -- DHCP, which is where the names of things come from ---------------- */
+var DHCP_TYPE = { 1: 'discover', 2: 'offer', 3: 'request', 4: 'decline', 5: 'ack',
+                  6: 'nak', 7: 'release', 8: 'inform' };
+
+DN.dissectDhcp = function (b, o, r) {
+  r.app = 'DHCP'; r.stack.push('dhcp');
+  if (b.length < o + 240) { r.info = 'DHCP, truncated'; return; }
+  var d = { op: b[o], yiaddr: DN.ip4(b, o + 16), ciaddr: DN.ip4(b, o + 12), siaddr: DN.ip4(b, o + 20) };
+  d.mac = DN.mac(b, o + 28);
+  if (!(b[o + 236] === 99 && b[o + 237] === 130 && b[o + 238] === 83 && b[o + 239] === 99)) {
+    r.info = 'DHCP without the magic cookie';
+    return;
+  }
+  var p = o + 240, guard = 0;
+  while (p < b.length && guard++ < 80) {
+    var t = b[p];
+    if (t === 255) break;
+    if (t === 0) { p++; continue; }
+    var l = b[p + 1], v = p + 2;
+    if (v + l > b.length) break;
+    if (t === 53) d.type = DHCP_TYPE[b[v]] || ('type ' + b[v]);
+    else if (t === 12) d.hostname = textOf(b, v, l);
+    else if (t === 60) d.vendorClass = textOf(b, v, l);
+    else if (t === 15) d.domain = textOf(b, v, l);
+    else if (t === 50) d.requested = DN.ip4(b, v);
+    else if (t === 54) d.server = DN.ip4(b, v);
+    else if (t === 51 && l === 4) d.leaseSeconds = ((b[v] << 24) >>> 0) + (b[v + 1] << 16) + (b[v + 2] << 8) + b[v + 3];
+    else if (t === 55) { d.paramList = []; for (var i = 0; i < l; i++) d.paramList.push(b[v + i]); }
+    p = v + l;
+  }
+  r.dhcp = d;
+  var bits = [];
+  if (d.type) bits.push(d.type);
+  if (d.hostname) bits.push('"' + d.hostname + '"');
+  if (d.yiaddr && d.yiaddr !== '0.0.0.0') bits.push('offered ' + d.yiaddr);
+  else if (d.requested) bits.push('asking for ' + d.requested);
+  bits.push('client ' + d.mac);
+  if (d.leaseSeconds) bits.push('lease ' + DN.secs(d.leaseSeconds));
+  r.info = 'DHCP ' + bits.join(', ');
+};
+
+/* -- SNMP, where the community string is the password ------------------ */
+DN.dissectSnmp = function (b, o, r) {
+  r.app = 'SNMP'; r.stack.push('snmp');
+  var nodes = DN.der(b, o, b.length);
+  if (!nodes.length || !nodes[0].kids || nodes[0].kids.length < 3) { r.info = 'SNMP, unreadable'; return; }
+  var k = nodes[0].kids;
+  var ver = b[k[0].at];
+  var s = { version: ver === 0 ? 'v1' : ver === 1 ? 'v2c' : ver === 3 ? 'v3' : ('version ' + ver) };
+  if (ver === 0 || ver === 1) {
+    s.community = '';
+    for (var i = k[1].at; i < k[1].at + k[1].len; i++) s.community += String.fromCharCode(b[i]);
+    s.cleartext = true;
+    var pdu = k[2];
+    s.pdu = { 0xa0: 'get', 0xa1: 'get next', 0xa2: 'response', 0xa3: 'set', 0xa4: 'trap',
+              0xa5: 'get bulk', 0xa6: 'inform', 0xa7: 'trap v2' }[pdu.tag] || ('pdu ' + pdu.tag);
+    if (s.pdu === 'set') s.write = true;
+  }
+  r.snmp = s;
+  r.info = 'SNMP ' + s.version + (s.pdu ? ' ' + s.pdu : '') +
+           (s.community != null ? ', community "' + s.community + '" in the clear' : '');
+  if (s.community != null) r.credentialRisk = 'SNMP community string';
+};
+
+/* -- SIP and RTP: the shape of a phone call ---------------------------- */
+var SIP_METHODS = ['INVITE', 'ACK', 'BYE', 'CANCEL', 'REGISTER', 'OPTIONS', 'INFO', 'SUBSCRIBE',
+                   'NOTIFY', 'REFER', 'MESSAGE', 'UPDATE', 'PRACK', 'PUBLISH'];
+
+DN.dissectSip = function (b, o, r) {
+  r.app = 'SIP'; r.stack.push('sip');
+  var text = textOf(b, o, Math.min(1400, b.length - o));
+  var lines = text.split('\r\n');
+  var start = lines[0] || '';
+  var s = { start: start, headers: {} };
+  for (var i = 1; i < lines.length; i++) {
+    if (!lines[i]) break;
+    var c = lines[i].indexOf(':');
+    if (c < 1) continue;
+    var key = lines[i].slice(0, c).trim().toLowerCase();
+    if (!s.headers[key]) s.headers[key] = lines[i].slice(c + 1).trim();
+  }
+  var m = start.match(/^([A-Z]+) /);
+  if (m && SIP_METHODS.indexOf(m[1]) >= 0) s.method = m[1];
+  var st = start.match(/^SIP\/2\.0 (\d{3})/);
+  if (st) s.status = parseInt(st[1], 10);
+  s.from = s.headers['from'] || s.headers['f'] || null;
+  s.to = s.headers['to'] || s.headers['t'] || null;
+  s.callId = s.headers['call-id'] || s.headers['i'] || null;
+  if (s.headers['authorization'] || s.headers['proxy-authorization']) {
+    s.auth = (s.headers['authorization'] || s.headers['proxy-authorization']).split(' ')[0];
+    if (/^Basic/i.test(s.auth)) r.credentialRisk = 'SIP Basic credentials';
+  }
+  r.sip = s;
+  r.info = 'SIP ' + (s.method || ('response ' + s.status)) +
+           (s.from ? ', from ' + s.from.replace(/;tag=.*/, '') : '');
+};
+
+var RTP_PT = { 0: 'G.711 u-law', 3: 'GSM', 4: 'G.723', 8: 'G.711 A-law', 9: 'G.722',
+               10: 'L16 stereo', 11: 'L16 mono', 18: 'G.729', 26: 'JPEG video', 96: 'dynamic',
+               97: 'dynamic', 98: 'dynamic', 99: 'dynamic' };
+
+DN.dissectRtp = function (b, o, r) {
+  if (b.length < o + 12) return false;
+  var v = b[o] >> 6;
+  if (v !== 2) return false;
+  var pt = b[o + 1] & 0x7f;
+  var marker = !!(b[o + 1] & 0x80);
+  if (pt >= 72 && pt <= 76) return false;              /* RTCP hides in this range */
+  var seq = (b[o + 2] << 8) | b[o + 3];
+  var stamp = ((b[o + 4] << 24) >>> 0) + (b[o + 5] << 16) + (b[o + 6] << 8) + b[o + 7];
+  var ssrc = (((b[o + 8] << 24) >>> 0) + (b[o + 9] << 16) + (b[o + 10] << 8) + b[o + 11]) >>> 0;
+  var cc = b[o] & 0x0f;
+  var payloadAt = o + 12 + cc * 4;
+  if (b[o] & 0x10) {                                    /* extension header */
+    if (payloadAt + 4 > b.length) return false;
+    payloadAt += 4 + (((b[payloadAt + 2] << 8) | b[payloadAt + 3]) * 4);
+  }
+  r.app = 'RTP'; r.stack.push('rtp');
+  r.rtp = { ssrc: ssrc, seq: seq, timestamp: stamp, payloadType: pt,
+            codec: RTP_PT[pt] || ('payload type ' + pt), marker: marker,
+            payloadAt: payloadAt, payloadLen: Math.max(0, b.length - payloadAt) };
+  r.info = 'RTP ' + r.rtp.codec + ', stream ' + ssrc.toString(16) + ', sequence ' + seq;
+  return true;
+};
+
+/* -- QUIC: what is readable before the encryption starts --------------- */
+DN.QUIC_VERSIONS = { 0x00000001: 'QUIC v1', 0x6b3343cf: 'draft-29', 0x709a50c4: 'v2' };
+
+DN.dissectQuic = function (b, o, r) {
+  if (b.length < o + 5) return false;
+  var first = b[o];
+  if (!(first & 0x80)) {
+    /* short header: nothing is readable, but it is still QUIC on 443 */
+    if ((r.sport === 443 || r.dport === 443) && (first & 0x40)) {
+      r.app = 'QUIC'; r.stack.push('quic');
+      r.quic = { form: 'short header', readable: false };
+      r.info = 'QUIC, application data, everything past the flags is encrypted';
+      return true;
+    }
+    return false;
+  }
+  var ver = (((b[o + 1] << 24) >>> 0) + (b[o + 2] << 16) + (b[o + 3] << 8) + b[o + 4]) >>> 0;
+  var dcidLen = b[o + 5];
+  if (o + 6 + dcidLen + 1 > b.length) return false;
+  var q = { form: 'long header', version: ver, versionName: DN.QUIC_VERSIONS[ver] || ('0x' + ver.toString(16)) };
+  q.type = ver === 0 ? 'version negotiation' : ['initial', '0-RTT', 'handshake', 'retry'][(first >> 4) & 3];
+  q.dcid = '';
+  for (var i = 0; i < dcidLen; i++) q.dcid += hex2(b[o + 6 + i]);
+  var scidLen = b[o + 6 + dcidLen];
+  q.scid = '';
+  for (var j = 0; j < scidLen && o + 7 + dcidLen + j < b.length; j++) q.scid += hex2(b[o + 7 + dcidLen + j]);
+  r.app = 'QUIC'; r.stack.push('quic');
+  r.quic = q;
+  r.info = 'QUIC ' + q.versionName + ' ' + q.type + ', connection ' + (q.dcid || '(none)') +
+           (q.type === 'initial' ? ', the name it is asking for is inside the encrypted payload' : '');
+  return true;
+};
+
+/* -- SMB: still everywhere, and version one is still a problem --------- */
+var SMB2_CMD = { 0: 'negotiate', 1: 'session setup', 2: 'logoff', 3: 'tree connect', 4: 'tree disconnect',
+                 5: 'create', 6: 'close', 7: 'flush', 8: 'read', 9: 'write', 10: 'lock', 11: 'ioctl',
+                 12: 'cancel', 13: 'echo', 14: 'query directory', 15: 'change notify',
+                 16: 'query info', 17: 'set info', 18: 'oplock break' };
+
+DN.dissectSmb = function (b, o, r) {
+  /* NetBIOS session service wraps SMB on 445 and 139 */
+  var at = o;
+  if (b.length > at + 4 && b[at] === 0x00) at += 4;
+  if (b.length < at + 8) return false;
+  if (b[at] === 0xff && b[at + 1] === 0x53 && b[at + 2] === 0x4d && b[at + 3] === 0x42) {
+    r.app = 'SMB1'; r.stack.push('smb1');
+    r.smb = { version: 1, command: b[at + 4] };
+    r.info = 'SMB version 1, command 0x' + hex2(b[at + 4]);
+    return true;
+  }
+  if (b[at] === 0xfe && b[at + 1] === 0x53 && b[at + 2] === 0x4d && b[at + 3] === 0x42) {
+    r.app = 'SMB2'; r.stack.push('smb2');
+    var cmd = (b[at + 13] << 8) | b[at + 12];
+    var s = { version: 2, command: SMB2_CMD[cmd] || ('command ' + cmd), commandCode: cmd };
+    s.response = !!(b[at + 16] & 1);
+    if (b.length >= at + 64) {
+      s.treeId = ((b[at + 39] << 24) >>> 0) + (b[at + 38] << 16) + (b[at + 37] << 8) + b[at + 36];
+    }
+    if (cmd === 3 && !s.response && b.length > at + 72) {      /* tree connect carries the share */
+      /* PathOffset and PathLength sit after StructureSize and Flags in the
+         request body, and PathOffset counts from the header start */
+      var off = (b[at + 69] << 8) | b[at + 68];
+      var ln = (b[at + 71] << 8) | b[at + 70];
+      var path = '';
+      for (var i = 0; i + 1 < ln && at + off + i + 1 < b.length; i += 2) {
+        var c = b[at + off + i] | (b[at + off + i + 1] << 8);
+        if (c >= 32 && c < 127) path += String.fromCharCode(c);
+      }
+      if (path) s.share = path;
+    }
+    r.smb = s;
+    r.info = 'SMB2 ' + s.command + (s.response ? ' response' : ' request') + (s.share ? ', share ' + s.share : '');
+    return true;
+  }
+  return false;
+};
+
+/* -- LDAP: a bind request can carry a password in the clear ------------ */
+DN.dissectLdap = function (b, o, r) {
+  var nodes = DN.der(b, o, b.length);
+  if (!nodes.length || !nodes[0].kids || nodes[0].kids.length < 2) return false;
+  var k = nodes[0].kids;
+  var op = k[1];
+  var l = { messageId: b[k[0].at] };
+  var opName = { 0x60: 'bind request', 0x61: 'bind response', 0x63: 'search request',
+                 0x64: 'search result entry', 0x65: 'search result done', 0x66: 'modify request',
+                 0x68: 'add request', 0x6a: 'delete request', 0x73: 'extended request' }[op.tag];
+  if (!opName) return false;
+  l.operation = opName;
+  r.app = 'LDAP'; r.stack.push('ldap');
+  if (op.tag === 0x60 && op.kids && op.kids.length >= 3) {
+    l.version = b[op.kids[0].at];
+    l.name = strOf(b, op.kids[1]);
+    var auth = op.kids[2];
+    if (auth.tag === 0x80) {                     /* simple authentication */
+      l.simple = true;
+      l.passwordLength = auth.len;
+      if (auth.len > 0 && l.name) r.credentialRisk = 'LDAP simple bind password';
+    } else l.sasl = true;
+  }
+  if (op.tag === 0x63 && op.kids && op.kids.length) l.baseObject = strOf(b, op.kids[0]);
+  r.ldap = l;
+  r.info = 'LDAP ' + l.operation + (l.name ? ' as ' + l.name : '') +
+           (l.simple && l.passwordLength ? ', password sent in the clear' : '') +
+           (l.baseObject ? ', base ' + l.baseObject : '');
+  return true;
+};
+
+/* -- Kerberos: which encryption types are still on offer --------------- */
+var KRB_ETYPE = { 1: 'DES-CBC-CRC', 3: 'DES-CBC-MD5', 17: 'AES128-CTS', 18: 'AES256-CTS',
+                  23: 'RC4-HMAC', 24: 'RC4-HMAC-EXP' };
+var KRB_WEAK = { 1: 'single DES', 3: 'single DES', 23: 'RC4', 24: 'export grade RC4' };
+
+DN.dissectKerberos = function (b, o, r) {
+  var nodes = DN.der(b, o, b.length);
+  if (!nodes.length) return false;
+  var top = nodes[0];
+  var msg = { 0x6a: 'AS-REQ', 0x6b: 'AS-REP', 0x6c: 'TGS-REQ', 0x6d: 'TGS-REP',
+              0x6e: 'AP-REQ', 0x6f: 'AP-REP', 0x7e: 'KRB-ERROR' }[top.tag];
+  if (!msg) return false;
+  r.app = 'Kerberos'; r.stack.push('kerberos');
+  var kb = { message: msg, etypes: [], weak: [] };
+
+  /* walk the tree looking for the realm, the principal names and the
+     encryption type list, without decoding every field */
+  (function walk(list, depth) {
+    if (depth > 8) return;
+    list.forEach(function (n) {
+      if (n.tag === 27 || n.tag === 0x1b) {          /* GeneralString */
+        var v = strOf(b, n);
+        if (v && /^[A-Za-z0-9._@$\/-]+$/.test(v)) {
+          if (v === v.toUpperCase() && v.indexOf('.') > 0 && !kb.realm) kb.realm = v;
+          else if (!kb.principal && v.length < 64) kb.principal = v;
+        }
+      }
+      if (n.kids) walk(n.kids, depth + 1);
+    });
+  })(nodes, 0);
+
+  /* the etype list is a SEQUENCE OF INTEGER under a context tag */
+  (function findEtypes(list, depth) {
+    if (depth > 8) return;
+    list.forEach(function (n) {
+      if (n.tag === 0x30 && n.kids && n.kids.length && n.kids.every(function (x) { return x.tag === 2 && x.len <= 2; })) {
+        var vals = n.kids.map(function (x) { return b[x.at + x.len - 1]; });
+        if (vals.length >= 2 && vals.every(function (v) { return KRB_ETYPE[v] || v < 30; })) {
+          vals.forEach(function (v) {
+            var name = KRB_ETYPE[v] || ('etype ' + v);
+            if (kb.etypes.indexOf(name) < 0) kb.etypes.push(name);
+            if (KRB_WEAK[v] && kb.weak.indexOf(KRB_WEAK[v]) < 0) kb.weak.push(KRB_WEAK[v]);
+          });
+        }
+      }
+      if (n.kids) findEtypes(n.kids, depth + 1);
+    });
+  })(nodes, 0);
+
+  r.kerberos = kb;
+  r.info = 'Kerberos ' + msg + (kb.principal ? ' for ' + kb.principal : '') +
+           (kb.realm ? ' in ' + kb.realm : '') +
+           (kb.etypes.length ? ', offering ' + kb.etypes.join(', ') : '');
+  return true;
+};
 
 /* DNS ------------------------------------------------------------------ */
 function dnsName(b, o, end, depth) {
@@ -1422,6 +1929,469 @@ DN.dissect = function (p) {
 };
 
 /* ====================================================================
+   HASHES AND CERTIFICATES
+   Both hashes are written out longhand because crypto.subtle is not
+   available to a page opened from disk, and this file must keep working
+   from disk.
+   ==================================================================== */
+
+var K256 = [
+  0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+  0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+  0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+  0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+  0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+  0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+  0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+  0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
+];
+
+DN.sha256 = function (bytes) {
+  var h = [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19];
+  var len = bytes.length;
+  var withPad = ((len + 9 + 63) >> 6) << 6;
+  var m = new Uint8Array(withPad);
+  m.set(bytes);
+  m[len] = 0x80;
+  var bitsHi = Math.floor(len / 536870912), bitsLo = (len << 3) >>> 0;
+  m[withPad - 8] = (bitsHi >>> 24) & 255; m[withPad - 7] = (bitsHi >>> 16) & 255;
+  m[withPad - 6] = (bitsHi >>> 8) & 255; m[withPad - 5] = bitsHi & 255;
+  m[withPad - 4] = (bitsLo >>> 24) & 255; m[withPad - 3] = (bitsLo >>> 16) & 255;
+  m[withPad - 2] = (bitsLo >>> 8) & 255; m[withPad - 1] = bitsLo & 255;
+
+  var w = new Uint32Array(64), i, t;
+  for (i = 0; i < withPad; i += 64) {
+    for (t = 0; t < 16; t++) {
+      w[t] = ((m[i + t * 4] << 24) | (m[i + t * 4 + 1] << 16) | (m[i + t * 4 + 2] << 8) | m[i + t * 4 + 3]) >>> 0;
+    }
+    for (t = 16; t < 64; t++) {
+      var x = w[t - 15], y = w[t - 2];
+      var s0 = ((x >>> 7) | (x << 25)) ^ ((x >>> 18) | (x << 14)) ^ (x >>> 3);
+      var s1 = ((y >>> 17) | (y << 15)) ^ ((y >>> 19) | (y << 13)) ^ (y >>> 10);
+      w[t] = (w[t - 16] + s0 + w[t - 7] + s1) >>> 0;
+    }
+    var a = h[0], b = h[1], c = h[2], d = h[3], e = h[4], f = h[5], g = h[6], hh = h[7];
+    for (t = 0; t < 64; t++) {
+      var S1 = ((e >>> 6) | (e << 26)) ^ ((e >>> 11) | (e << 21)) ^ ((e >>> 25) | (e << 7));
+      var ch = (e & f) ^ (~e & g);
+      var t1 = (hh + S1 + ch + K256[t] + w[t]) >>> 0;
+      var S0 = ((a >>> 2) | (a << 30)) ^ ((a >>> 13) | (a << 19)) ^ ((a >>> 22) | (a << 10));
+      var maj = (a & b) ^ (a & c) ^ (b & c);
+      var t2 = (S0 + maj) >>> 0;
+      hh = g; g = f; f = e; e = (d + t1) >>> 0; d = c; c = b; b = a; a = (t1 + t2) >>> 0;
+    }
+    h[0] = (h[0] + a) >>> 0; h[1] = (h[1] + b) >>> 0; h[2] = (h[2] + c) >>> 0; h[3] = (h[3] + d) >>> 0;
+    h[4] = (h[4] + e) >>> 0; h[5] = (h[5] + f) >>> 0; h[6] = (h[6] + g) >>> 0; h[7] = (h[7] + hh) >>> 0;
+  }
+  var out = '';
+  for (i = 0; i < 8; i++) out += ('0000000' + h[i].toString(16)).slice(-8);
+  return out;
+};
+
+/* MD5 is here for one reason: a JA3 fingerprint is defined as the MD5 of
+   a particular string, and a fingerprint that is not that hash cannot be
+   compared with anyone else's. It is never used as a security check. */
+var MD5_S = [7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22,
+             5, 9, 14, 20, 5, 9, 14, 20, 5, 9, 14, 20, 5, 9, 14, 20,
+             4, 11, 16, 23, 4, 11, 16, 23, 4, 11, 16, 23, 4, 11, 16, 23,
+             6, 10, 15, 21, 6, 10, 15, 21, 6, 10, 15, 21, 6, 10, 15, 21];
+var MD5_K = (function () {
+  var k = [];
+  for (var i = 0; i < 64; i++) k.push((Math.floor(Math.abs(Math.sin(i + 1)) * 4294967296)) >>> 0);
+  return k;
+})();
+
+DN.md5 = function (bytes) {
+  var len = bytes.length;
+  var withPad = ((len + 9 + 63) >> 6) << 6;
+  var m = new Uint8Array(withPad);
+  m.set(bytes);
+  m[len] = 0x80;
+  var lo = (len << 3) >>> 0, hi = Math.floor(len / 536870912);
+  m[withPad - 8] = lo & 255; m[withPad - 7] = (lo >>> 8) & 255;
+  m[withPad - 6] = (lo >>> 16) & 255; m[withPad - 5] = (lo >>> 24) & 255;
+  m[withPad - 4] = hi & 255; m[withPad - 3] = (hi >>> 8) & 255;
+  m[withPad - 2] = (hi >>> 16) & 255; m[withPad - 1] = (hi >>> 24) & 255;
+
+  var a0 = 0x67452301, b0 = 0xefcdab89, c0 = 0x98badcfe, d0 = 0x10325476;
+  var w = new Uint32Array(16), i, j;
+  for (i = 0; i < withPad; i += 64) {
+    for (j = 0; j < 16; j++) {
+      w[j] = (m[i + j * 4] | (m[i + j * 4 + 1] << 8) | (m[i + j * 4 + 2] << 16) | (m[i + j * 4 + 3] << 24)) >>> 0;
+    }
+    var A = a0, B = b0, C = c0, D = d0;
+    for (j = 0; j < 64; j++) {
+      var F, g;
+      if (j < 16) { F = (B & C) | (~B & D); g = j; }
+      else if (j < 32) { F = (D & B) | (~D & C); g = (5 * j + 1) % 16; }
+      else if (j < 48) { F = B ^ C ^ D; g = (3 * j + 5) % 16; }
+      else { F = C ^ (B | ~D); g = (7 * j) % 16; }
+      F = (F + A + MD5_K[j] + w[g]) >>> 0;
+      A = D; D = C; C = B;
+      B = (B + (((F << MD5_S[j]) | (F >>> (32 - MD5_S[j]))) >>> 0)) >>> 0;
+    }
+    a0 = (a0 + A) >>> 0; b0 = (b0 + B) >>> 0; c0 = (c0 + C) >>> 0; d0 = (d0 + D) >>> 0;
+  }
+  function le(n) {
+    return ('0' + (n & 255).toString(16)).slice(-2) + ('0' + ((n >>> 8) & 255).toString(16)).slice(-2) +
+           ('0' + ((n >>> 16) & 255).toString(16)).slice(-2) + ('0' + ((n >>> 24) & 255).toString(16)).slice(-2);
+  }
+  return le(a0) + le(b0) + le(c0) + le(d0);
+};
+
+/* -- DER, walked far enough to read a certificate ---------------------- */
+
+DN.der = function (b, o, end) {
+  o = o || 0; end = end == null ? b.length : end;
+  var out = [], guard = 0;
+  while (o < end && guard++ < 4000) {
+    var tag = b[o], p = o + 1;
+    if (p >= end) break;
+    var len = b[p++];
+    if (len & 0x80) {
+      var nb = len & 0x7f;
+      if (nb === 0 || nb > 4 || p + nb > end) break;
+      len = 0;
+      for (var i = 0; i < nb; i++) len = (len << 8) | b[p++];
+    }
+    if (len < 0 || p + len > end) break;
+    var node = { tag: tag, cls: tag >> 6, constructed: !!(tag & 0x20), num: tag & 0x1f,
+                 start: o, head: p - o, len: len, at: p };
+    if (node.constructed) node.kids = DN.der(b, p, p + len);
+    out.push(node);
+    o = p + len;
+  }
+  return out;
+};
+
+function oidOf(b, node) {
+  if (!node || node.tag !== 6) return null;
+  var o = node.at, end = o + node.len, parts = [], v = 0, first = true;
+  while (o < end) {
+    var c = b[o++];
+    v = (v << 7) | (c & 0x7f);
+    if (!(c & 0x80)) {
+      if (first) { parts.push(Math.floor(v / 40)); parts.push(v % 40); first = false; }
+      else parts.push(v);
+      v = 0;
+    }
+  }
+  return parts.join('.');
+}
+DN.oidOf = oidOf;
+
+function strOf(b, node) {
+  if (!node) return null;
+  var s = '';
+  for (var i = node.at; i < node.at + node.len; i++) {
+    var c = b[i];
+    s += (c >= 32 && c < 127) ? String.fromCharCode(c) : (c === 0 ? '' : '.');
+  }
+  return s;
+}
+
+function derTime(b, node) {
+  var s = strOf(b, node);
+  if (!s) return null;
+  var y, rest;
+  if (node.tag === 23) {                       /* UTCTime, two digit year */
+    y = parseInt(s.slice(0, 2), 10);
+    y = y >= 50 ? 1900 + y : 2000 + y;
+    rest = s.slice(2);
+  } else {                                     /* GeneralizedTime */
+    y = parseInt(s.slice(0, 4), 10);
+    rest = s.slice(4);
+  }
+  var mo = parseInt(rest.slice(0, 2), 10), d = parseInt(rest.slice(2, 4), 10);
+  var hh = parseInt(rest.slice(4, 6), 10) || 0, mm = parseInt(rest.slice(6, 8), 10) || 0;
+  var ss = parseInt(rest.slice(8, 10), 10) || 0;
+  var t = Date.UTC(y, mo - 1, d, hh, mm, ss);
+  return isNaN(t) ? null : t;
+}
+
+var OID_NAMES = {
+  '2.5.4.3': 'CN', '2.5.4.6': 'C', '2.5.4.7': 'L', '2.5.4.8': 'ST',
+  '2.5.4.10': 'O', '2.5.4.11': 'OU', '1.2.840.113549.1.9.1': 'email'
+};
+var SIG_ALGS = {
+  '1.2.840.113549.1.1.4': 'MD5 with RSA', '1.2.840.113549.1.1.5': 'SHA-1 with RSA',
+  '1.2.840.113549.1.1.11': 'SHA-256 with RSA', '1.2.840.113549.1.1.12': 'SHA-384 with RSA',
+  '1.2.840.113549.1.1.13': 'SHA-512 with RSA', '1.2.840.113549.1.1.10': 'RSASSA-PSS',
+  '1.2.840.10045.4.1': 'SHA-1 with ECDSA', '1.2.840.10045.4.3.2': 'SHA-256 with ECDSA',
+  '1.2.840.10045.4.3.3': 'SHA-384 with ECDSA', '1.2.840.10045.4.3.4': 'SHA-512 with ECDSA',
+  '1.3.101.112': 'Ed25519'
+};
+var CURVES = { '1.2.840.10045.3.1.7': 'P-256', '1.3.132.0.34': 'P-384', '1.3.132.0.35': 'P-521' };
+var WEAK_SIG = { '1.2.840.113549.1.1.4': 'MD5', '1.2.840.113549.1.1.5': 'SHA-1', '1.2.840.10045.4.1': 'SHA-1' };
+
+function readName(b, nameNode) {
+  var parts = [], out = { text: '', cn: null };
+  if (!nameNode || !nameNode.kids) return out;
+  nameNode.kids.forEach(function (rdn) {
+    (rdn.kids || []).forEach(function (atv) {
+      var k = atv.kids || [];
+      if (k.length < 2) return;
+      var oid = oidOf(b, k[0]), val = strOf(b, k[1]);
+      var label = OID_NAMES[oid] || oid;
+      parts.push(label + '=' + val);
+      if (label === 'CN' && !out.cn) out.cn = val;
+    });
+  });
+  out.text = parts.join(', ');
+  return out;
+}
+
+DN.readCertificate = function (b, o, len) {
+  var top = DN.der(b, o, o + len);
+  if (!top.length || !top[0].kids) return null;
+  var cert = top[0].kids;
+  var tbs = cert[0];
+  if (!tbs || !tbs.kids) return null;
+  var k = tbs.kids, at = 0, out = { bytes: len };
+
+  if (k[0] && k[0].cls === 2) { out.version = 1 + (b[k[0].at + 2] || 0); at = 1; }
+  else out.version = 1;
+
+  var serial = k[at++];
+  if (serial) {
+    var sh = '';
+    for (var i = serial.at; i < serial.at + Math.min(serial.len, 20); i++) sh += hex2(b[i]);
+    out.serial = sh;
+  }
+  var sigAlgNode = k[at++];
+  out.signatureAlgorithmOid = sigAlgNode && sigAlgNode.kids ? oidOf(b, sigAlgNode.kids[0]) : null;
+  out.signatureAlgorithm = SIG_ALGS[out.signatureAlgorithmOid] || out.signatureAlgorithmOid;
+  out.weakSignature = WEAK_SIG[out.signatureAlgorithmOid] || null;
+
+  var issuer = readName(b, k[at++]);
+  var validity = k[at++];
+  var subject = readName(b, k[at++]);
+  var spki = k[at++];
+
+  out.issuer = issuer.text; out.issuerCn = issuer.cn;
+  out.subject = subject.text; out.subjectCn = subject.cn;
+  out.selfSigned = !!(issuer.text && issuer.text === subject.text);
+
+  if (validity && validity.kids && validity.kids.length >= 2) {
+    out.notBefore = derTime(b, validity.kids[0]);
+    out.notAfter = derTime(b, validity.kids[1]);
+  }
+
+  if (spki && spki.kids && spki.kids.length >= 2) {
+    var alg = spki.kids[0], bits = spki.kids[1];
+    var algOid = alg.kids ? oidOf(b, alg.kids[0]) : null;
+    if (algOid === '1.2.840.113549.1.1.1') {
+      out.keyType = 'RSA';
+      var inner = DN.der(b, bits.at + 1, bits.at + bits.len);
+      if (inner.length && inner[0].kids && inner[0].kids.length) {
+        var mod = inner[0].kids[0];
+        var start = mod.at, mlen = mod.len;
+        while (mlen > 0 && b[start] === 0) { start++; mlen--; }
+        out.keyBits = mlen * 8;
+      }
+    } else if (algOid === '1.2.840.10045.2.1') {
+      out.keyType = 'EC';
+      var curveOid = alg.kids && alg.kids[1] ? oidOf(b, alg.kids[1]) : null;
+      out.curve = CURVES[curveOid] || curveOid;
+      out.keyBits = out.curve === 'P-256' ? 256 : out.curve === 'P-384' ? 384 : out.curve === 'P-521' ? 521 : null;
+    } else if (algOid === '1.3.101.112') {
+      out.keyType = 'Ed25519'; out.keyBits = 256;
+    } else out.keyType = algOid;
+  }
+
+  /* subject alternative names, which is where the real host list lives */
+  var exts = k[at];
+  if (exts && exts.cls === 2 && exts.kids && exts.kids[0] && exts.kids[0].kids) {
+    exts.kids[0].kids.forEach(function (ext) {
+      var ek = ext.kids || [];
+      if (!ek.length) return;
+      if (oidOf(b, ek[0]) !== '2.5.29.17') return;
+      var octet = ek[ek.length - 1];
+      var names = DN.der(b, octet.at, octet.at + octet.len);
+      if (!names.length || !names[0].kids) return;
+      out.altNames = names[0].kids.filter(function (n) { return n.num === 2; })
+        .map(function (n) { return strOf(b, n); });
+    });
+  }
+  return out;
+};
+
+/* ====================================================================
+   SCALE
+   The reader stops dissecting the whole file. It walks the headers
+   once to learn shape and time, and full dissection happens only for
+   what is inside the net.
+   ==================================================================== */
+
+DN.MAX_INDEX = 5000000;      /* packets a capture may be indexed to */
+DN.MAX_DISSECT = 300000;     /* packets that may be dissected at once */
+
+/* -- shallow classification --------------------------------------------
+   Enough of each packet to colour the drag bar and nothing more. No row
+   objects, no strings, no allocation per packet.                      */
+
+DN.CAT_TCP = 0; DN.CAT_UDP = 1; DN.CAT_ICMP = 2; DN.CAT_ARP = 3;
+DN.CAT_OTHER = 4; DN.CAT_WIFI = 5;
+
+function peekIp(b, o, len) {
+  if (o + 20 > len) return DN.CAT_OTHER;
+  var v = b[o] >> 4;
+  if (v === 4) {
+    if (((b[o + 6] << 8) | b[o + 7]) & 0x1fff) return DN.CAT_OTHER;   /* later fragment */
+    var pr = b[o + 9];
+    return pr === 6 ? DN.CAT_TCP : pr === 17 ? DN.CAT_UDP : (pr === 1 ? DN.CAT_ICMP : DN.CAT_OTHER);
+  }
+  if (v === 6) {
+    if (o + 40 > len) return DN.CAT_OTHER;
+    var nx = b[o + 6];
+    return nx === 6 ? DN.CAT_TCP : nx === 17 ? DN.CAT_UDP : (nx === 58 ? DN.CAT_ICMP : DN.CAT_OTHER);
+  }
+  return DN.CAT_OTHER;
+}
+
+function peekEther(et, b, o, len) {
+  if (et === 0x0800 || et === 0x86dd) return peekIp(b, o, len);
+  if (et === 0x0806) return DN.CAT_ARP;
+  return DN.CAT_OTHER;
+}
+
+DN.peekOne = function (b, lt) {
+  var len = b.length;
+  if (lt === 1) {
+    if (len < 14) return DN.CAT_OTHER;
+    var et = (b[12] << 8) | b[13], o = 14, guard = 0;
+    while ((et === 0x8100 || et === 0x88a8 || et === 0x9100) && len >= o + 4 && guard++ < 4) {
+      et = (b[o + 2] << 8) | b[o + 3]; o += 4;
+    }
+    return peekEther(et, b, o, len);
+  }
+  if (lt === 101 || lt === 228 || lt === 12 || lt === 229) return peekIp(b, 0, len);
+  if (lt === 113) return len < 16 ? DN.CAT_OTHER : peekEther((b[14] << 8) | b[15], b, 16, len);
+  if (lt === 276) return len < 20 ? DN.CAT_OTHER : peekEther((b[0] << 8) | b[1], b, 20, len);
+  if (lt === 0) return len < 4 ? DN.CAT_OTHER : peekIp(b, 4, len);
+  if (lt === 127 || lt === 105 || lt === 119 || lt === 163) {
+    /* the air: find the frame, then say whether it carries IP */
+    var at = 0;
+    if (lt === 127) { if (len < 8) return DN.CAT_WIFI; at = b[2] | (b[3] << 8); }
+    else if (lt === 119) at = 144;
+    else if (lt === 163) { if (len < 8) return DN.CAT_WIFI; at = ((b[4] << 24) >>> 0) + (b[5] << 16) + (b[6] << 8) + b[7]; }
+    if (at < 0 || at + 24 > len) return DN.CAT_WIFI;
+    var fc0 = b[at], fc1 = b[at + 1];
+    if (((fc0 >> 2) & 3) !== 2) return DN.CAT_WIFI;        /* not a data frame */
+    if (fc1 & 0x40) return DN.CAT_WIFI;                    /* encrypted */
+    var hl = 24 + ((((fc0 >> 4) & 15) & 8) ? 2 : 0) + (((fc1 & 3) === 3) ? 6 : 0);
+    var p = at + hl;
+    if (p + 8 > len || b[p] !== 0xaa || b[p + 1] !== 0xaa) return DN.CAT_WIFI;
+    var c = peekEther((b[p + 6] << 8) | b[p + 7], b, p + 8, len);
+    return c === DN.CAT_OTHER ? DN.CAT_WIFI : c;
+  }
+  return DN.CAT_OTHER;
+};
+
+/* -- the index ---------------------------------------------------------
+   Parallel typed arrays, one entry per packet, plus an ordering by time
+   so the net can be resolved with two binary searches instead of a scan
+   over every packet in the file.                                      */
+
+DN.buildIndex = function (packets, opts) {
+  opts = opts || {};
+  var n = packets.length;
+  var ts = new Float64Array(n), len = new Uint32Array(n), cat = new Uint8Array(n);
+  var from = opts.from || 0, to = opts.to != null ? opts.to : n;
+  for (var i = from; i < to; i++) {
+    var p = packets.get(i);
+    ts[i] = p.ts;
+    len[i] = p.origlen;
+    cat[i] = DN.peekOne(p.bytes, p.linktype);
+  }
+  return { ts: ts, len: len, cat: cat, count: n };
+};
+
+DN.orderByTime = function (index) {
+  var n = index.count, ts = index.ts;
+  var ord = new Uint32Array(n), i;
+  for (i = 0; i < n; i++) ord[i] = i;
+  var sorted = true;
+  for (i = 1; i < n; i++) { if (ts[i] < ts[i - 1]) { sorted = false; break; } }
+  if (!sorted) {
+    var arr = Array.prototype.slice.call(ord);
+    arr.sort(function (a, b) { return ts[a] - ts[b] || a - b; });
+    ord = new Uint32Array(arr);
+  }
+  return { order: ord, wasSorted: sorted };
+};
+
+/* first position in the ordering whose timestamp is at or after t */
+DN.lowerBound = function (index, order, t) {
+  var lo = 0, hi = order.length;
+  while (lo < hi) {
+    var mid = (lo + hi) >> 1;
+    if (index.ts[order[mid]] < t) lo = mid + 1; else hi = mid;
+  }
+  return lo;
+};
+DN.upperBound = function (index, order, t) {
+  var lo = 0, hi = order.length;
+  while (lo < hi) {
+    var mid = (lo + hi) >> 1;
+    if (index.ts[order[mid]] <= t) lo = mid + 1; else hi = mid;
+  }
+  return lo;
+};
+
+/* -- the strip, drawn from the index alone ----------------------------- */
+DN.densityBuckets = function (index, order, cols, t0, t1) {
+  var b = [], i, k;
+  for (i = 0; i < cols; i++) b.push([0, 0, 0, 0, 0, 0]);
+  var span = (t1 - t0) || 1, peak = 1;
+  for (i = 0; i < order.length; i++) {
+    var idx = order[i];
+    var x = Math.floor((index.ts[idx] - t0) / span * cols);
+    if (x < 0) x = 0; else if (x >= cols) x = cols - 1;
+    var col = b[x];
+    col[index.cat[idx]]++;
+    var tot = col[0] + col[1] + col[2] + col[3] + col[4] + col[5];
+    if (tot > peak) peak = tot;
+  }
+  return { buckets: b, peak: peak };
+};
+
+/* -- capture sets -------------------------------------------------------
+   Several files read as one timeline. Ring buffer captures arrive as a
+   pile of files that are really one recording.                       */
+
+DN.mergeCaptures = function (caps) {
+  if (caps.length === 1) {
+    caps[0].sources = [{ name: caps[0].name, packets: caps[0].packets.length,
+                         format: caps[0].format, linktype: caps[0].linktype }];
+    return caps[0];
+  }
+  var warnings = [], sources = [], types = {}, truncated = false, lists = [];
+  caps.forEach(function (c) {
+    sources.push({ name: c.name, packets: c.packets.length, format: c.format, linktype: c.linktype });
+    types[c.linktype] = (types[c.linktype] || 0) + 1;
+    c.warnings.forEach(function (w) { warnings.push(c.name + ': ' + w); });
+    if (c.truncated) truncated = true;
+    lists.push({ list: c.packets, name: c.name });
+  });
+  var all = DN.PacketList.merged(lists);
+  var typeKeys = Object.keys(types);
+  if (typeKeys.length > 1) {
+    warnings.push('These files do not share a link type (' + typeKeys.map(function (t) {
+      return (DN.LINKTYPES[t] || ('link ' + t)) + ' \u00d7 ' + types[t];
+    }).join(', ') + '). They are read as one timeline anyway, and each packet is dissected by its own file\'s link type.');
+  }
+  return {
+    format: caps.map(function (c) { return c.format; }).join(' + '),
+    endian: null, tsUnit: 'variable',
+    snaplen: Math.max.apply(null, caps.map(function (c) { return c.snaplen || 0; })),
+    linktype: caps[0].linktype, mixedLinktypes: typeKeys.length > 1,
+    packets: all, warnings: warnings, truncated: truncated,
+    sources: sources, name: sources.length + ' files'
+  };
+};
+
+/* ====================================================================
    REASSEMBLY
    Fragments become datagrams, segments become streams, and the
    retransmission guess becomes a classification.
@@ -1432,7 +2402,7 @@ DN.MAX_FLOWS = 4000;
 
 function bytesOf(r, packets) {
   if (r.dataBuf) return r.dataBuf;
-  var p = packets[r.i];
+  var p = packets.get(r.i);
   return p ? p.bytes : null;
 }
 DN.bytesOf = bytesOf;
@@ -1476,7 +2446,7 @@ DN.defragment = function (rows, packets) {
 
     var buf = new Uint8Array(expect);
     for (i = 0; i < parts.length; i++) {
-      var pr = parts[i], ff = pr.fragment, src = packets[pr.i] && packets[pr.i].bytes;
+      var pr = parts[i], ff = pr.fragment, pp = packets.get(pr.i), src = pp && pp.bytes;
       if (!src) continue;
       buf.set(src.subarray(ff.dataOff, Math.min(src.length, ff.dataOff + ff.dataLen)), ff.off);
     }
@@ -1777,25 +2747,443 @@ var TLS_HS = { 1: 'client hello', 2: 'server hello', 4: 'new session ticket', 8:
                14: 'server hello done', 15: 'certificate verify', 16: 'client key exchange', 20: 'finished' };
 
 function decodeTlsStream(b) {
-  var msgs = [], p = 0, guard = 0, appRecords = 0, appBytes = 0;
-  while (p + 5 <= b.length && guard++ < 3000) {
-    var type = b[p], len = (b[p + 3] << 8) | b[p + 4];
-    if (!TLS_REC[type] || len === 0 || len > 18432) break;
-    var body = p + 5, avail = Math.min(len, b.length - body);
-    if (type === 23) { appRecords++; appBytes += len; }
-    else if (type === 22 && avail >= 4) {
-      var hs = b[body], hlen = (b[body + 1] << 16) | (b[body + 2] << 8) | b[body + 3];
-      msgs.push({ kind: 'tls', record: TLS_REC[type], handshake: TLS_HS[hs] || ('handshake type ' + hs),
-                  at: p, len: len, hsLen: hlen, complete: avail >= len });
-    } else {
-      msgs.push({ kind: 'tls', record: TLS_REC[type], at: p, len: len, complete: avail >= len });
-    }
-    p = body + len;
+  var msgs = [], t;
+  try { t = DN.readTlsStream(b); } catch (e) { return msgs; }
+  t.handshakes.forEach(function (m) {
+    var bits = [];
+    if (m.sni) bits.push('for ' + m.sni);
+    if (m.version) bits.push(m.version);
+    if (m.cipher) bits.push(m.cipher);
+    if (m.certificates) bits.push(plural(m.certificates, 'certificate'));
+    if (m.alpn && m.alpn.length) bits.push('alpn ' + m.alpn.join(', '));
+    msgs.push({ kind: 'tls', record: 'handshake', handshake: m.name, len: m.len,
+                complete: m.complete, detail: bits.join(', '), ja3: m.ja3, ja3s: m.ja3s,
+                weakCipher: m.weakCipher });
+  });
+  t.alerts.forEach(function (a) {
+    msgs.push({ kind: 'tls', record: 'alert', handshake: 'level ' + a.level + ', description ' + a.description,
+                len: 2, complete: true });
+  });
+  if (t.appRecords) {
+    msgs.push({ kind: 'tls', record: 'application data', records: t.appRecords,
+                len: t.appBytes, complete: true, encrypted: true });
   }
-  if (appRecords) msgs.push({ kind: 'tls', record: 'application data', records: appRecords,
-                              len: appBytes, complete: true, encrypted: true });
+  if (msgs.length) msgs[0].session = t;
   return msgs;
 }
+
+/* ====================================================================
+   TLS, READ PROPERLY
+   Handshake messages are reassembled across records before they are
+   parsed, which is the only way a certificate chain is readable.
+   ==================================================================== */
+
+DN.TLS_VERSIONS = { 0x0300: 'SSL 3.0', 0x0301: 'TLS 1.0', 0x0302: 'TLS 1.1', 0x0303: 'TLS 1.2', 0x0304: 'TLS 1.3' };
+
+DN.CIPHERS = {
+  0x0000: 'TLS_NULL_WITH_NULL_NULL', 0x0004: 'RSA_WITH_RC4_128_MD5', 0x0005: 'RSA_WITH_RC4_128_SHA',
+  0x000a: 'RSA_WITH_3DES_EDE_CBC_SHA', 0x002f: 'RSA_WITH_AES_128_CBC_SHA',
+  0x0035: 'RSA_WITH_AES_256_CBC_SHA', 0x003c: 'RSA_WITH_AES_128_CBC_SHA256',
+  0x009c: 'RSA_WITH_AES_128_GCM_SHA256', 0x009d: 'RSA_WITH_AES_256_GCM_SHA384',
+  0xc013: 'ECDHE_RSA_WITH_AES_128_CBC_SHA', 0xc014: 'ECDHE_RSA_WITH_AES_256_CBC_SHA',
+  0xc027: 'ECDHE_RSA_WITH_AES_128_CBC_SHA256', 0xc02b: 'ECDHE_ECDSA_WITH_AES_128_GCM_SHA256',
+  0xc02c: 'ECDHE_ECDSA_WITH_AES_256_GCM_SHA384', 0xc02f: 'ECDHE_RSA_WITH_AES_128_GCM_SHA256',
+  0xc030: 'ECDHE_RSA_WITH_AES_256_GCM_SHA384', 0xcca8: 'ECDHE_RSA_WITH_CHACHA20_POLY1305',
+  0xcca9: 'ECDHE_ECDSA_WITH_CHACHA20_POLY1305',
+  0x1301: 'TLS_AES_128_GCM_SHA256', 0x1302: 'TLS_AES_256_GCM_SHA384', 0x1303: 'TLS_CHACHA20_POLY1305_SHA256'
+};
+
+DN.cipherWeakness = function (id) {
+  var n = DN.CIPHERS[id] || '';
+  if (/NULL/.test(n)) return 'no encryption at all';
+  if (/EXPORT/.test(n)) return 'export grade, deliberately weakened';
+  if (/RC4/.test(n)) return 'RC4, broken';
+  if (/3DES/.test(n)) return 'triple DES, obsolete and slow';
+  if (/_DES_|_WITH_DES/.test(n)) return 'single DES, broken';
+  if (/_anon_|DH_anon/.test(n)) return 'anonymous, no authentication';
+  if (/MD5/.test(n)) return 'MD5 integrity, broken';
+  if (/CBC_SHA$/.test(n)) return 'CBC with SHA-1, old and awkward';
+  return null;
+};
+
+/* GREASE values exist to keep parsers honest and are excluded from a
+   fingerprint by definition */
+function isGrease(v) { return (v & 0x0f0f) === 0x0a0a && ((v >> 8) & 0xff) === (v & 0xff); }
+
+function u16(b, o) { return (b[o] << 8) | b[o + 1]; }
+function u24(b, o) { return (b[o] << 16) | (b[o + 1] << 8) | b[o + 2]; }
+
+/* -- reassemble handshake messages out of the record stream ------------ */
+DN.tlsHandshakes = function (b) {
+  var recs = [], hs = [], p = 0, guard = 0;
+  var hsBytes = [], appRecords = 0, appBytes = 0, versions = {}, alerts = [];
+
+  while (p + 5 <= b.length && guard++ < 20000) {
+    var type = b[p], ver = u16(b, p + 1), len = u16(b, p + 3);
+    if (!TLS_REC[type] || len > 18432) break;
+    var body = p + 5, avail = Math.min(len, b.length - body);
+    versions[ver] = (versions[ver] || 0) + 1;
+    recs.push({ type: type, name: TLS_REC[type], version: ver, len: len, at: p, complete: avail >= len });
+    if (type === 22) {
+      for (var i = 0; i < avail; i++) hsBytes.push(b[body + i]);
+    } else if (type === 23) { appRecords++; appBytes += len; }
+    else if (type === 21 && avail >= 2) {
+      alerts.push({ level: b[body], description: b[body + 1] });
+    }
+    p = body + len;
+    if (avail < len) break;
+  }
+
+  /* now walk the concatenated handshake bytes as messages */
+  var hb = Uint8Array.from(hsBytes), q = 0, g2 = 0;
+  while (q + 4 <= hb.length && g2++ < 2000) {
+    var ht = hb[q], hl = u24(hb, q + 1);
+    if (hl > hb.length - (q + 4)) {
+      hs.push({ type: ht, name: TLS_HS[ht] || ('handshake type ' + ht), len: hl, complete: false, at: q });
+      break;
+    }
+    hs.push({ type: ht, name: TLS_HS[ht] || ('handshake type ' + ht), len: hl, complete: true,
+              at: q + 4, bytes: hb });
+    q += 4 + hl;
+  }
+  return { records: recs, handshakes: hs, hsBytes: hb, appRecords: appRecords, appBytes: appBytes,
+           versions: versions, alerts: alerts };
+};
+
+DN.parseClientHello = function (b, o, len) {
+  var out = { ciphers: [], extensions: [], curves: [], pointFormats: [], alpn: [], sigAlgs: [] };
+  var end = o + len;
+  if (o + 34 > end) return null;
+  out.legacyVersion = u16(b, o);
+  var p = o + 2 + 32;
+  var sidLen = b[p++]; p += sidLen;
+  if (p + 2 > end) return null;
+  var csLen = u16(b, p); p += 2;
+  for (var i = 0; i + 1 < csLen && p + 1 < end; i += 2, p += 2) {
+    var c = u16(b, p);
+    if (!isGrease(c)) out.ciphers.push(c);
+  }
+  if (p >= end) return out;
+  var cmLen = b[p++]; p += cmLen;
+  if (p + 2 > end) return out;
+  var extLen = u16(b, p); p += 2;
+  var extEnd = Math.min(end, p + extLen);
+  while (p + 4 <= extEnd) {
+    var et = u16(b, p), el = u16(b, p + 2), ev = p + 4;
+    if (!isGrease(et)) out.extensions.push(et);
+    if (et === 0 && el >= 5) {                       /* server name */
+      var listEnd = Math.min(ev + el, extEnd);
+      var q = ev + 2;
+      while (q + 3 <= listEnd) {
+        var nt = b[q], nl = u16(b, q + 1);
+        if (nt === 0) {
+          var nm = '';
+          for (var k = 0; k < nl && q + 3 + k < listEnd; k++) nm += String.fromCharCode(b[q + 3 + k]);
+          out.sni = nm;
+        }
+        q += 3 + nl;
+      }
+    } else if (et === 10 && el >= 2) {                /* supported groups */
+      var gl = u16(b, ev);
+      for (var gi = 0; gi + 1 < gl && ev + 2 + gi + 1 < extEnd; gi += 2) {
+        var gv = u16(b, ev + 2 + gi);
+        if (!isGrease(gv)) out.curves.push(gv);
+      }
+    } else if (et === 11 && el >= 1) {                /* ec point formats */
+      var pl = b[ev];
+      for (var pi = 0; pi < pl && ev + 1 + pi < extEnd; pi++) out.pointFormats.push(b[ev + 1 + pi]);
+    } else if (et === 16 && el >= 2) {                /* alpn */
+      var al = u16(b, ev), ap = ev + 2, aEnd = Math.min(ev + el, extEnd);
+      while (ap < aEnd) {
+        var sl = b[ap], sv = '';
+        for (var si = 0; si < sl && ap + 1 + si < aEnd; si++) sv += String.fromCharCode(b[ap + 1 + si]);
+        if (sv) out.alpn.push(sv);
+        ap += 1 + sl;
+      }
+    } else if (et === 43 && el >= 1) {                /* supported versions */
+      var vl = b[ev];
+      out.supportedVersions = [];
+      for (var vi = 0; vi + 1 < vl && ev + 1 + vi + 1 < extEnd; vi += 2) {
+        var vv = u16(b, ev + 1 + vi);
+        if (!isGrease(vv)) out.supportedVersions.push(vv);
+      }
+    } else if (et === 13 && el >= 2) {                /* signature algorithms */
+      var sal = u16(b, ev);
+      for (var sai = 0; sai + 1 < sal && ev + 2 + sai + 1 < extEnd; sai += 2) out.sigAlgs.push(u16(b, ev + 2 + sai));
+    }
+    p = ev + el;
+  }
+
+  /* the fingerprint, exactly as JA3 defines it */
+  out.ja3String = [out.legacyVersion, out.ciphers.join('-'), out.extensions.join('-'),
+                   out.curves.join('-'), out.pointFormats.join('-')].join(',');
+  out.ja3 = DN.md5(Uint8Array.from(strBytes(out.ja3String)));
+  return out;
+};
+
+function strBytes(s) {
+  var a = new Array(s.length);
+  for (var i = 0; i < s.length; i++) a[i] = s.charCodeAt(i) & 255;
+  return a;
+}
+
+DN.parseServerHello = function (b, o, len) {
+  var out = { extensions: [] };
+  var end = o + len;
+  if (o + 35 > end) return null;
+  out.legacyVersion = u16(b, o);
+  var p = o + 2 + 32;
+  var sidLen = b[p++]; p += sidLen;
+  if (p + 3 > end) return out;
+  out.cipher = u16(b, p); p += 2;
+  out.compression = b[p++];
+  if (p + 2 > end) return out;
+  var extLen = u16(b, p); p += 2;
+  var extEnd = Math.min(end, p + extLen);
+  while (p + 4 <= extEnd) {
+    var et = u16(b, p), el = u16(b, p + 2), ev = p + 4;
+    if (!isGrease(et)) out.extensions.push(et);
+    if (et === 43 && el >= 2) out.negotiatedVersion = u16(b, ev);
+    if (et === 16 && el >= 3) {
+      var sl = b[ev + 2], sv = '';
+      for (var i = 0; i < sl && ev + 3 + i < extEnd; i++) sv += String.fromCharCode(b[ev + 3 + i]);
+      if (sv) out.alpn = sv;
+    }
+    p = ev + el;
+  }
+  out.version = out.negotiatedVersion || out.legacyVersion;
+  out.ja3sString = [out.legacyVersion, out.cipher, out.extensions.join('-')].join(',');
+  out.ja3s = DN.md5(Uint8Array.from(strBytes(out.ja3sString)));
+  return out;
+};
+
+DN.parseCertificates = function (b, o, len, tls13) {
+  var out = [], end = o + len, p = o;
+  if (tls13) { var ctxLen = b[p]; p += 1 + ctxLen; }
+  if (p + 3 > end) return out;
+  var listLen = u24(b, p); p += 3;
+  var listEnd = Math.min(end, p + listLen);
+  var guard = 0;
+  while (p + 3 <= listEnd && guard++ < 16) {
+    var cl = u24(b, p); p += 3;
+    if (p + cl > listEnd) break;
+    var cert = null;
+    try { cert = DN.readCertificate(b, p, cl); } catch (e) { cert = null; }
+    if (cert) {
+      cert.sha256 = DN.sha256(b.subarray(p, p + cl));
+      out.push(cert);
+    }
+    p += cl;
+    if (tls13) { if (p + 2 > listEnd) break; var extl = u16(b, p); p += 2 + extl; }
+  }
+  return out;
+};
+
+/* the session as a whole, read off one rebuilt stream ------------------ */
+DN.readTlsStream = function (b, isServer) {
+  var h = DN.tlsHandshakes(b);
+  var out = { records: h.records.length, appRecords: h.appRecords, appBytes: h.appBytes,
+              handshakes: [], alerts: h.alerts, certificates: [] };
+  var sawTls13 = false;
+  h.handshakes.forEach(function (m) {
+    var entry = { name: m.name, type: m.type, len: m.len, complete: m.complete };
+    if (m.complete && m.type === 1) {
+      var ch = DN.parseClientHello(h.hsBytes, m.at, m.len);
+      if (ch) {
+        entry.sni = ch.sni; entry.ja3 = ch.ja3; entry.ja3String = ch.ja3String;
+        entry.alpn = ch.alpn; entry.ciphers = ch.ciphers;
+        entry.offered = (ch.supportedVersions || [ch.legacyVersion]).map(function (v) { return DN.TLS_VERSIONS[v] || ('0x' + v.toString(16)); });
+        out.client = ch;
+      }
+    } else if (m.complete && m.type === 2) {
+      var sh = DN.parseServerHello(h.hsBytes, m.at, m.len);
+      if (sh) {
+        entry.version = DN.TLS_VERSIONS[sh.version] || ('0x' + sh.version.toString(16));
+        entry.cipher = DN.CIPHERS[sh.cipher] || ('cipher 0x' + sh.cipher.toString(16));
+        entry.ja3s = sh.ja3s;
+        entry.weakCipher = DN.cipherWeakness(sh.cipher);
+        out.server = sh;
+        out.version = entry.version;
+        out.cipher = entry.cipher;
+        out.weakCipher = entry.weakCipher;
+        sawTls13 = sh.version === 0x0304;
+      }
+    } else if (m.complete && m.type === 11) {
+      var certs = DN.parseCertificates(h.hsBytes, m.at, m.len, sawTls13);
+      out.certificates = out.certificates.concat(certs);
+      entry.certificates = certs.length;
+    }
+    out.handshakes.push(entry);
+  });
+  if (!out.version && Object.keys(h.versions).length) {
+    var best = Object.keys(h.versions).map(Number).sort(function (a, b) { return b - a; })[0];
+    out.version = DN.TLS_VERSIONS[best] || ('0x' + best.toString(16));
+    out.versionFromRecords = true;
+  }
+  return out;
+};
+
+/* ====================================================================
+   CARVING
+   Files out of rebuilt streams. This is only possible because of the
+   reassembly work: a file that crossed forty segments is one object
+   here, and it is hashed so it can be spoken about later without
+   carrying the bytes around.
+   ==================================================================== */
+
+DN.MAX_CARVE = 16 * 1024 * 1024;
+DN.MAX_CARVED_FILES = 400;
+
+var MAGIC = [
+  { sig: [0x89, 0x50, 0x4e, 0x47], type: 'PNG image', ext: 'png' },
+  { sig: [0xff, 0xd8, 0xff], type: 'JPEG image', ext: 'jpg' },
+  { sig: [0x47, 0x49, 0x46, 0x38], type: 'GIF image', ext: 'gif' },
+  { sig: [0x25, 0x50, 0x44, 0x46], type: 'PDF document', ext: 'pdf' },
+  { sig: [0x50, 0x4b, 0x03, 0x04], type: 'ZIP archive or Office document', ext: 'zip' },
+  { sig: [0x1f, 0x8b], type: 'gzip', ext: 'gz' },
+  { sig: [0x42, 0x5a, 0x68], type: 'bzip2', ext: 'bz2' },
+  { sig: [0x37, 0x7a, 0xbc, 0xaf], type: '7-zip archive', ext: '7z' },
+  { sig: [0x52, 0x61, 0x72, 0x21], type: 'RAR archive', ext: 'rar' },
+  { sig: [0x7f, 0x45, 0x4c, 0x46], type: 'ELF executable', ext: 'elf', executable: true },
+  { sig: [0x4d, 0x5a], type: 'Windows executable', ext: 'exe', executable: true },
+  { sig: [0xca, 0xfe, 0xba, 0xbe], type: 'Java class or Mach-O bundle', ext: 'bin', executable: true },
+  { sig: [0xcf, 0xfa, 0xed, 0xfe], type: 'Mach-O executable', ext: 'macho', executable: true },
+  { sig: [0x52, 0x49, 0x46, 0x46], type: 'RIFF container (WAV or AVI)', ext: 'riff' },
+  { sig: [0x49, 0x44, 0x33], type: 'MP3 audio', ext: 'mp3' },
+  { sig: [0x53, 0x51, 0x4c, 0x69], type: 'SQLite database', ext: 'sqlite' },
+  { sig: [0x3c, 0x3f, 0x78, 0x6d], type: 'XML', ext: 'xml' },
+  { sig: [0x7b], type: 'JSON or text', ext: 'json' }
+];
+
+DN.sniffType = function (b) {
+  for (var i = 0; i < MAGIC.length; i++) {
+    var m = MAGIC[i], ok = true;
+    for (var j = 0; j < m.sig.length; j++) if (b[j] !== m.sig[j]) { ok = false; break; }
+    if (ok) return m;
+  }
+  if (b.length >= 4 && b[4] === 0x66 && b[5] === 0x74 && b[6] === 0x79 && b[7] === 0x70) {
+    return { type: 'MP4 or QuickTime video', ext: 'mp4' };
+  }
+  var printable = 0, n = Math.min(b.length, 512);
+  for (var k = 0; k < n; k++) {
+    var c = b[k];
+    if (c === 9 || c === 10 || c === 13 || (c >= 32 && c < 127)) printable++;
+  }
+  if (n && printable / n > 0.95) return { type: 'text', ext: 'txt' };
+  return { type: 'unrecognised', ext: 'bin' };
+};
+
+/* de-chunk a chunked body so the carved file is the file, not the framing */
+function dechunk(b, start, limit) {
+  var out = [], p = start, guard = 0;
+  while (p < b.length && guard++ < 20000 && out.length < limit) {
+    var eol = -1;
+    for (var i = p; i + 1 < b.length; i++) if (b[i] === 13 && b[i + 1] === 10) { eol = i; break; }
+    if (eol < 0) break;
+    var line = '';
+    for (var j = p; j < eol; j++) line += String.fromCharCode(b[j]);
+    var sz = parseInt(line.split(';')[0], 16);
+    if (!(sz >= 0)) break;
+    if (sz === 0) return { bytes: out, complete: true, end: eol + 2 };
+    for (var k = 0; k < sz && eol + 2 + k < b.length; k++) out.push(b[eol + 2 + k]);
+    p = eol + 2 + sz + 2;
+  }
+  return { bytes: out, complete: false, end: p };
+}
+
+DN.carveStream = function (b, messages, ctx) {
+  var files = [];
+  (messages || []).forEach(function (m) {
+    if (m.kind !== 'http' || !m.bodyLen) return;
+    var body;
+    if (m.chunked) {
+      var d = dechunk(b, m.bodyStart, DN.MAX_CARVE);
+      body = Uint8Array.from(d.bytes);
+      m.bodyComplete = d.complete;
+    } else {
+      var end = Math.min(b.length, m.bodyStart + m.bodyLen);
+      body = b.subarray(m.bodyStart, end);
+    }
+    if (!body.length) return;
+    if (body.length > DN.MAX_CARVE) body = body.subarray(0, DN.MAX_CARVE);
+
+    var sniff = DN.sniffType(body);
+    var declared = (m.headers && (m.headers['content-type'] || '')).split(';')[0] || null;
+    var name = null;
+    var disp = m.headers && m.headers['content-disposition'];
+    if (disp) {
+      var fm = disp.match(/filename\*?=(?:UTF-8''|")?([^";]+)/i);
+      if (fm) name = decodeURIComponent(fm[1].replace(/"$/, ''));
+    }
+    if (!name && ctx && ctx.path) {
+      var seg = ctx.path.split('?')[0].split('/').filter(Boolean).pop();
+      if (seg && /\./.test(seg)) name = seg;
+    }
+    if (!name) name = 'carved-' + (files.length + 1) + '.' + sniff.ext;
+
+    files.push({
+      name: name.replace(/[^\w.\-]/g, '_').slice(0, 80),
+      declaredType: declared,
+      sniffedType: sniff.type,
+      executable: !!sniff.executable,
+      typeMismatch: !!(declared && sniff.type !== 'unrecognised' && sniff.type !== 'text' &&
+                       declared.indexOf(sniff.ext) < 0 &&
+                       !(sniff.ext === 'jpg' && /jpeg/.test(declared)) &&
+                       !(sniff.ext === 'zip' && /(zip|officedocument|opendocument|epub|jar)/.test(declared))),
+      size: body.length,
+      complete: m.complete !== false && (m.bodyComplete !== false),
+      sha256: DN.sha256(body),
+      md5: DN.md5(body),
+      from: ctx && ctx.from, to: ctx && ctx.to,
+      url: ctx && ctx.host ? (ctx.host + (ctx.path || '')) : (ctx && ctx.path) || null,
+      status: m.status || null,
+      encrypted: false,
+      bytes: body
+    });
+  });
+  return files;
+};
+
+/* -- G.711 out of an RTP stream ---------------------------------------- */
+
+function ulawToPcm(u) {
+  u = ~u & 0xff;
+  var sign = (u & 0x80), exponent = (u >> 4) & 0x07, mantissa = u & 0x0f;
+  var sample = ((mantissa << 3) + 0x84) << exponent;
+  sample -= 0x84;
+  return sign ? -sample : sample;
+}
+function alawToPcm(a) {
+  a ^= 0x55;
+  var sign = a & 0x80, exponent = (a & 0x70) >> 4, mantissa = a & 0x0f;
+  var sample = exponent === 0 ? (mantissa << 4) + 8 : ((mantissa << 4) + 0x108) << (exponent - 1);
+  return sign ? -sample : sample;
+}
+
+DN.rtpToWav = function (payloads, payloadType) {
+  var total = 0, i, j;
+  for (i = 0; i < payloads.length; i++) total += payloads[i].length;
+  var pcm = new Int16Array(total), at = 0;
+  var conv = payloadType === 8 ? alawToPcm : ulawToPcm;
+  for (i = 0; i < payloads.length; i++) {
+    var p = payloads[i];
+    for (j = 0; j < p.length; j++) {
+      var v = conv(p[j]);
+      pcm[at++] = v > 32767 ? 32767 : (v < -32768 ? -32768 : v);
+    }
+  }
+  var dataBytes = pcm.length * 2;
+  var out = new Uint8Array(44 + dataBytes);
+  var dv = new DataView(out.buffer);
+  function tag(o, s) { for (var k = 0; k < s.length; k++) out[o + k] = s.charCodeAt(k); }
+  tag(0, 'RIFF'); dv.setUint32(4, 36 + dataBytes, true); tag(8, 'WAVE');
+  tag(12, 'fmt '); dv.setUint32(16, 16, true); dv.setUint16(20, 1, true);
+  dv.setUint16(22, 1, true); dv.setUint32(24, 8000, true); dv.setUint32(28, 16000, true);
+  dv.setUint16(32, 2, true); dv.setUint16(34, 16, true);
+  tag(36, 'data'); dv.setUint32(40, dataBytes, true);
+  for (i = 0; i < pcm.length; i++) dv.setInt16(44 + i * 2, pcm[i], true);
+  return out;
+};
 
 DN.streamText = function (bytes, limit) {
   limit = limit || 64 * 1024;
@@ -1854,6 +3242,8 @@ DN.analyze = function (rows, meta) {
   var scanners = new Map(), retrans = 0, resets = 0, ooo = 0, synsSent = new Map();
   var reasm = meta.reasm || null;
   var segClass = (reasm && reasm.segClass) || {};
+  var carved = [], tlsSessions = [], rtpStreams = new Map(), sip = [], dhcp = [];
+  var smb = [], ldap = [], kerberos = [], snmp = [], quic = [];
   var aps = new Map(), ssidMap = new Map(), probes = new Map(), deauths = [];
   var eapol = new Map(), wifiFrames = 0, badFcs = 0, encData = 0, wifiTypes = new Map();
   var sizes = { tiny: 0, small: 0, mid: 0, big: 0, jumbo: 0 };
@@ -2007,6 +3397,42 @@ DN.analyze = function (rows, meta) {
       eapol.get(ek).add(r.eapol.message);
     }
 
+    /* the v1.4 decoders, collected for the written pass */
+    if (r.dhcp) dhcp.push({ ts: r.ts, type: r.dhcp.type, mac: r.dhcp.mac, hostname: r.dhcp.hostname,
+                            vendorClass: r.dhcp.vendorClass, address: r.dhcp.yiaddr !== '0.0.0.0' ? r.dhcp.yiaddr : r.dhcp.requested,
+                            server: r.dhcp.server, leaseSeconds: r.dhcp.leaseSeconds });
+    if (r.snmp) snmp.push({ ts: r.ts, src: r.src, dst: r.dst, version: r.snmp.version,
+                            community: r.snmp.community, pdu: r.snmp.pdu, write: r.snmp.write });
+    if (r.sip) sip.push({ ts: r.ts, src: r.src, dst: r.dst, method: r.sip.method, status: r.sip.status,
+                          from: r.sip.from, to: r.sip.to, callId: r.sip.callId, auth: r.sip.auth });
+    if (r.smb) smb.push({ ts: r.ts, src: r.src, dst: r.dst, version: r.smb.version,
+                          command: r.smb.command, share: r.smb.share });
+    if (r.ldap) ldap.push({ ts: r.ts, src: r.src, dst: r.dst, operation: r.ldap.operation,
+                            name: r.ldap.name, simple: r.ldap.simple, passwordLength: r.ldap.passwordLength });
+    if (r.kerberos) kerberos.push({ ts: r.ts, src: r.src, dst: r.dst, message: r.kerberos.message,
+                                    principal: r.kerberos.principal, realm: r.kerberos.realm,
+                                    etypes: r.kerberos.etypes, weak: r.kerberos.weak });
+    if (r.quic) quic.push({ ts: r.ts, src: r.src, dst: r.dst, version: r.quic.versionName, type: r.quic.type });
+    if (r.rtp) {
+      var rk = r.src + ':' + r.sport + '>' + r.dst + ':' + r.dport + '|' + r.rtp.ssrc;
+      if (!rtpStreams.has(rk)) {
+        rtpStreams.set(rk, { key: rk, src: r.src, sport: r.sport, dst: r.dst, dport: r.dport,
+                             ssrc: r.rtp.ssrc, codec: r.rtp.codec, payloadType: r.rtp.payloadType,
+                             packets: 0, bytes: 0, firstSeq: r.rtp.seq, lastSeq: r.rtp.seq,
+                             seen: 0, lost: 0, start: r.ts, end: r.ts, payloads: [] });
+      }
+      var st = rtpStreams.get(rk);
+      st.packets++; st.bytes += r.rtp.payloadLen; st.end = r.ts;
+      if (r.rtp.seq !== st.lastSeq) {
+        var step = (r.rtp.seq - st.lastSeq) & 0xffff;
+        if (step > 1 && step < 1000) st.lost += step - 1;
+      }
+      st.lastSeq = r.rtp.seq;
+      if (st.payloads.length < 20000 && r.rtp.payloadLen > 0) {
+        st.payloads.push({ i: r.i, at: r.rtp.payloadAt, len: r.rtp.payloadLen });
+      }
+    }
+
     /* observations that feed the written findings */
     if (r.dns && r.dns.questions && r.dns.questions.length) {
       dns.push({ ts: r.ts, qr: r.dns.qr, name: r.dns.questions[0].name, type: r.dns.questions[0].type,
@@ -2060,9 +3486,15 @@ DN.analyze = function (rows, meta) {
       ['a', 'b'].forEach(function (side) {
         var d = fl[side];
         var from = side === 'a' ? c.aHost : c.bHost, to = side === 'a' ? c.bHost : c.aHost;
+        var lastReq = null;
         (d.messages || []).forEach(function (m) {
           m.from = from; m.to = to; m.side = side;
           c.messages.push(m);
+          if (m.kind === 'tls' && m.session) {
+            c.tls = m.session;
+            tlsSessions.push({ conv: c.key, from: from, to: to, session: m.session,
+                               port: side === 'a' ? c.bPort : c.aPort });
+          }
           if (m.kind === 'http' && !m.response && m.method) {
             httpReq.push({ ts: c.start, method: m.method, host: m.host || to, path: m.path,
                            client: from, server: to, reassembled: true,
@@ -2073,6 +3505,23 @@ DN.analyze = function (rows, meta) {
             }
           }
         });
+
+        /* files out of this direction of the stream */
+        if (carved.length < DN.MAX_CARVED_FILES && d.stream && d.messages && d.messages.length) {
+          var req = (fl[side === 'a' ? 'b' : 'a'].messages || []).filter(function (x) {
+            return x.kind === 'http' && !x.response;
+          })[0];
+          var ctx = { from: from, to: to, host: req && req.host, path: req && req.path };
+          var got;
+          try { got = DN.carveStream(d.stream, d.messages, ctx); } catch (e) { got = []; }
+          got.forEach(function (f) {
+            if (carved.length >= DN.MAX_CARVED_FILES) return;
+            f.conv = c.key;
+            f.cleartext = true;
+            f.ts = c.start;
+            carved.push(f);
+          });
+        }
       });
     }
   });
@@ -2097,6 +3546,8 @@ DN.analyze = function (rows, meta) {
     unansweredSyns: unanswered, refusedSyns: refused,
     reasm: reasm ? reasm.totals : null,
     defrag: meta.defrag || null,
+    carved: carved, tls: tlsSessions, rtp: Array.from(rtpStreams.values()),
+    sip: sip, dhcp: dhcp, smb: smb, ldap: ldap, kerberos: kerberos, snmp: snmp, quic: quic,
     wifi: wifiFrames ? {
       frames: wifiFrames, badFcs: badFcs, encryptedData: encData,
       types: wifiTypes,
@@ -2261,6 +3712,196 @@ DN.findings = function (A) {
   if (A.resets >= 5) {
     add('note', 'link health', plural(A.resets, 'reset') + agree(A.resets, ' was', ' were') + ' sent',
       'RST ends a connection abruptly. A handful is normal. A steady stream points at an application dropping sessions, a firewall cutting them, or a scan being turned away.');
+  }
+
+  /* ---- what the deeper decoders found ------------------------------ */
+
+  /* TLS, now that certificates can actually be read */
+  if (A.tls && A.tls.length) {
+    var vers = countBy(A.tls, function (t) { return t.session.version; });
+    var old = A.tls.filter(function (t) { return /SSL 3|TLS 1\.0|TLS 1\.1/.test(t.session.version || ''); });
+    var weakC = A.tls.filter(function (t) { return t.session.weakCipher; });
+    var allCerts = [];
+    A.tls.forEach(function (t) {
+      (t.session.certificates || []).forEach(function (c) { allCerts.push({ cert: c, to: t.to }); });
+    });
+
+    add('note', 'encryption', plural(A.tls.length, 'TLS session') + agree(A.tls.length, ' was', ' were') + ' read as far as the encryption allows',
+      'Versions seen: ' + topN(vers, 5).map(function (e) { return e[0] + ' (' + e[1] + ')'; }).join(', ') + '.' +
+      (allCerts.length ? ' ' + plural(allCerts.length, 'certificate') + agree(allCerts.length, ' was', ' were') + ' visible on the wire.' : '') +
+      ' In TLS 1.3 the certificate is encrypted, so a session with no certificate here is usually modern rather than suspicious.');
+
+    if (old.length) {
+      add('flag', 'encryption', plural(old.length, 'session') + ' negotiated an obsolete TLS version',
+        old.slice(0, 6).map(function (t) { return t.to + ' (' + t.session.version + ')'; }).join(', ') +
+        '. TLS 1.0 and 1.1 were deprecated in 2021 and SSL 3.0 long before that. Anything still negotiating these is either very old or has been talked down to a weaker version deliberately.');
+    }
+    if (weakC.length) {
+      add('flag', 'encryption', plural(weakC.length, 'session') + ' agreed on a weak cipher suite',
+        weakC.slice(0, 6).map(function (t) { return t.to + ': ' + t.session.cipher + ' (' + t.session.weakCipher + ')'; }).join('; ') + '.');
+    }
+
+    var now = A.end || Date.now();
+    var expired = allCerts.filter(function (x) { return x.cert.notAfter && x.cert.notAfter < now; });
+    var notYet = allCerts.filter(function (x) { return x.cert.notBefore && x.cert.notBefore > now; });
+    var weakSig = allCerts.filter(function (x) { return x.cert.weakSignature; });
+    var smallKey = allCerts.filter(function (x) { return x.cert.keyType === 'RSA' && x.cert.keyBits && x.cert.keyBits < 2048; });
+    var selfSigned = allCerts.filter(function (x) { return x.cert.selfSigned; });
+
+    if (expired.length) {
+      add('flag', 'certificates', plural(expired.length, 'certificate') + agree(expired.length, ' was', ' were') + ' already expired at capture time',
+        expired.slice(0, 5).map(function (x) {
+          return (x.cert.subjectCn || x.to) + ' expired ' + DN.stamp(x.cert.notAfter);
+        }).join('; ') + '. Clients either warned the user or were configured to ignore it, and neither is good.');
+    }
+    if (notYet.length) {
+      add('watch', 'certificates', plural(notYet.length, 'certificate') + agree(notYet.length, ' was', ' were') + ' not valid yet',
+        'A certificate dated in the future usually means a clock is wrong somewhere, either on the server or on the machine that made the certificate.');
+    }
+    if (weakSig.length) {
+      add('flag', 'certificates', plural(weakSig.length, 'certificate') + agree(weakSig.length, ' is', ' are') + ' signed with a broken hash',
+        weakSig.slice(0, 5).map(function (x) { return (x.cert.subjectCn || x.to) + ': ' + x.cert.signatureAlgorithm; }).join('; ') +
+        '. Collisions against SHA-1 and MD5 are practical, so these signatures do not prove what a signature is supposed to prove.');
+    }
+    if (smallKey.length) {
+      add('flag', 'certificates', plural(smallKey.length, 'certificate') + agree(smallKey.length, ' uses', ' use') + ' an RSA key under 2048 bits',
+        smallKey.slice(0, 5).map(function (x) { return (x.cert.subjectCn || x.to) + ': ' + x.cert.keyBits + ' bits'; }).join('; ') + '.');
+    }
+    if (selfSigned.length) {
+      add('note', 'certificates', plural(selfSigned.length, 'certificate') + agree(selfSigned.length, ' is', ' are') + ' self signed',
+        selfSigned.slice(0, 6).map(function (x) { return x.cert.subjectCn || x.to; }).join(', ') +
+        '. On internal equipment this is ordinary. On anything a browser is meant to trust it is not, and it is also what an interception proxy looks like from the inside.');
+    }
+    var ja3s = A.tls.filter(function (t) { return t.session.client && t.session.client.ja3; });
+    if (ja3s.length) {
+      var uniq = {};
+      ja3s.forEach(function (t) { uniq[t.session.client.ja3] = (uniq[t.session.client.ja3] || 0) + 1; });
+      var list = Object.keys(uniq);
+      add('note', 'encryption', plural(list.length, 'distinct client fingerprint') + ' appeared in the TLS handshakes',
+        'A JA3 fingerprint is a hash of how a client offers to negotiate, not of who it is. Identical software gives identical fingerprints, so it groups traffic by the tool that made it: ' +
+        list.slice(0, 4).map(function (h) { return h + ' (' + uniq[h] + ')'; }).join(', ') +
+        '. Useful for spotting one odd client among many ordinary ones, and useless as proof of anything on its own.');
+    }
+  }
+
+  /* carved files */
+  if (A.carved && A.carved.length) {
+    var exes = A.carved.filter(function (f) { return f.executable; });
+    var mismatch = A.carved.filter(function (f) { return f.typeMismatch; });
+    add('watch', 'carved files', plural(A.carved.length, 'file') + agree(A.carved.length, ' was', ' were') + ' rebuilt out of cleartext streams',
+      'These crossed the wire unencrypted and are reconstructed here whole, with hashes, so they can be checked against anything else without moving the bytes around. Largest: ' +
+      A.carved.slice(0).sort(function (x, y) { return y.size - x.size; }).slice(0, 4).map(function (f) {
+        return f.name + ' (' + f.sniffedType + ', ' + DN.bytesHuman(f.size) + ')';
+      }).join(', ') + '.');
+    if (exes.length) {
+      add('flag', 'carved files', plural(exes.length, 'executable') + agree(exes.length, ' was', ' were') + ' downloaded over plain HTTP',
+        exes.slice(0, 5).map(function (f) { return f.name + ' from ' + (f.url || f.from) + ', SHA-256 ' + f.sha256.slice(0, 16) + '...'; }).join('; ') +
+        '. An executable fetched without encryption can be replaced in transit by anyone on the path, and the client has no way to notice. Check those hashes against the vendor.');
+    }
+    if (mismatch.length) {
+      add('watch', 'carved files', plural(mismatch.length, 'file') + ' did not match its declared type',
+        mismatch.slice(0, 5).map(function (f) { return f.name + ' was served as ' + f.declaredType + ' but looks like ' + f.sniffedType; }).join('; ') +
+        '. Sometimes a misconfigured server, sometimes deliberate.');
+    }
+  }
+
+  /* SNMP */
+  if (A.snmp && A.snmp.length) {
+    var comms = countBy(A.snmp, function (x) { return x.community; });
+    var defaults = Array.from(comms.keys()).filter(function (c) { return c === 'public' || c === 'private'; });
+    var writes = A.snmp.filter(function (x) { return x.write; });
+    add(defaults.length ? 'flag' : 'watch', 'management', 'SNMP community strings crossed in the clear',
+      plural(A.snmp.length, 'message') + ', community ' +
+      topN(comms, 4).map(function (e) { return '"' + e[0] + '"'; }).join(', ') +
+      '. In version 1 and 2c the community string is the whole of the authentication and it is not encrypted, so anyone who saw this traffic now has it.' +
+      (defaults.length ? ' The default strings are in use here, which means the devices were very likely never configured.' : '') +
+      (writes.length ? ' ' + plural(writes.length, 'set request') + ' appeared, so this is write access, not just reading.' : ''));
+  }
+
+  /* SMB */
+  if (A.smb && A.smb.length) {
+    var v1 = A.smb.filter(function (x) { return x.version === 1; });
+    var shares = countBy(A.smb, function (x) { return x.share; });
+    if (v1.length) {
+      add('flag', 'file sharing', 'SMB version 1 is still in use',
+        plural(v1.length, 'message') + ' used the original SMB protocol. It has no useful integrity protection, it is what EternalBlue and WannaCry travelled on, and Microsoft has been removing it by default since 2017.');
+    }
+    if (shares.size) {
+      add('note', 'file sharing', plural(shares.size, 'share') + agree(shares.size, ' was', ' were') + ' connected to',
+        topN(shares, 8).map(function (e) { return e[0]; }).join(', ') + '.');
+    }
+  }
+
+  /* LDAP */
+  if (A.ldap && A.ldap.length) {
+    var binds = A.ldap.filter(function (x) { return x.simple && x.passwordLength; });
+    if (binds.length) {
+      add('flag', 'directory', plural(binds.length, 'LDAP simple bind') + ' sent a password without encryption',
+        binds.slice(0, 5).map(function (x) { return (x.name || 'an unnamed account') + ' from ' + x.src; }).join('; ') +
+        '. A simple bind puts the password in the request as plain bytes. On port 389 with no TLS wrapper, it is readable by anyone on the path, including this reader.');
+    }
+  }
+
+  /* Kerberos */
+  if (A.kerberos && A.kerberos.length) {
+    var weakK = A.kerberos.filter(function (x) { return x.weak && x.weak.length; });
+    var princ = countBy(A.kerberos, function (x) { return x.principal; });
+    add(weakK.length ? 'watch' : 'note', 'authentication', plural(A.kerberos.length, 'Kerberos message') + agree(A.kerberos.length, ' was', ' were') + ' seen',
+      (princ.size ? 'Principals named: ' + topN(princ, 6).map(function (e) { return e[0]; }).join(', ') + '. ' : '') +
+      (weakK.length
+        ? 'Weak encryption types were still on offer (' + weakK[0].weak.join(', ') +
+          '). RC4 tickets are the ones that can be taken away and attacked offline, which is what Kerberoasting is.'
+        : 'The encryption types on offer are current.'));
+  }
+
+  /* the shape of a phone call */
+  if (A.rtp && A.rtp.length) {
+    var totalLoss = A.rtp.reduce(function (n, s) { return n + s.lost; }, 0);
+    var totalPk = A.rtp.reduce(function (n, s) { return n + s.packets; }, 0);
+    var lossPct = totalPk ? (totalLoss / (totalPk + totalLoss) * 100) : 0;
+    add(lossPct > 1 ? 'watch' : 'note', 'voice', plural(A.rtp.length, 'RTP stream') + agree(A.rtp.length, ' was', ' were') + ' carried in this slice',
+      A.rtp.slice(0, 4).map(function (s) {
+        return s.src + ':' + s.sport + ' to ' + s.dst + ':' + s.dport + ' (' + s.codec + ', ' +
+               plural(s.packets, 'packet') + ', ' + DN.secs((s.end - s.start) / 1000) + ')';
+      }).join('; ') + '. ' +
+      (totalLoss
+        ? plural(totalLoss, 'packet') + ' went missing by sequence number, about ' + lossPct.toFixed(2) +
+          ' percent. Above roughly one percent, people start hearing it as clipping.'
+        : 'No gaps in the sequence numbers, so nothing was lost on the way here.') +
+      (A.rtp.some(function (s) { return s.payloadType === 0 || s.payloadType === 8; })
+        ? ' The G.711 streams here are unencrypted audio and can be saved as a WAV file from the Evidence station.' : ''));
+    if (A.sip && A.sip.length) {
+      var calls = countBy(A.sip, function (x) { return x.callId; });
+      add('note', 'voice', plural(calls.size, 'call') + agree(calls.size, ' was', ' were') + ' set up in SIP',
+        A.sip.filter(function (x) { return x.method === 'INVITE'; }).slice(0, 4).map(function (x) {
+          return (x.from || '?').replace(/[<>]/g, '').replace(/;tag=.*/, '') + ' calling ' + (x.to || '?').replace(/[<>]/g, '');
+        }).join('; ') + '. SIP signalling is in the clear here, so the numbers, the names and the call times are all readable.');
+    }
+  }
+
+  /* QUIC */
+  if (A.quic && A.quic.length) {
+    var initials = A.quic.filter(function (x) { return x.type === 'initial'; });
+    add('note', 'encryption', plural(A.quic.length, 'QUIC packet') + agree(A.quic.length, ' was', ' were') + ' seen',
+      'QUIC carries its own encryption and encrypts almost all of its headers, so unlike TLS over TCP there is no hostname visible in the opening exchange. ' +
+      (initials.length ? plural(initials.length, 'connection') + ' started inside this slice. ' : '') +
+      'What is left to work with is the endpoints, the timing and the volume. This reader does not attempt to decrypt QUIC initial packets.');
+  }
+
+  /* DHCP, which is where equipment tells you its own name */
+  if (A.dhcp && A.dhcp.length) {
+    var named = A.dhcp.filter(function (x) { return x.hostname; });
+    var leases = A.dhcp.filter(function (x) { return x.type === 'ack' && x.address; });
+    if (named.length || leases.length) {
+      var names = {};
+      named.forEach(function (x) { names[x.mac] = x.hostname; });
+      add('note', 'addressing', plural(Object.keys(names).length || leases.length, 'device') + ' appeared in DHCP',
+        (Object.keys(names).length
+          ? 'Devices that gave their own name: ' + Object.keys(names).slice(0, 8).map(function (m) { return names[m] + ' (' + m + ')'; }).join(', ') + '. '
+          : '') +
+        (leases.length ? plural(leases.length, 'address') + ' were handed out. ' : '') +
+        'A hostname in a DHCP request is chosen by the device and not verified by anything, which makes it good for inventory and useless as identity.');
+    }
   }
 
   /* ---- the air ----------------------------------------------------- */
@@ -2735,6 +4376,253 @@ DN.airCapture = function () {
   return { name: 'air-fixture.pcap', buffer: writePcap(f, { linktype: 127 }), frames: f.length };
 };
 
+/* ---- a capture for the deeper decoders ------------------------------- */
+
+/* just enough DER to build a certificate to parse back */
+function derLen(n) {
+  if (n < 128) return [n];
+  if (n < 256) return [0x81, n];
+  return [0x82, (n >> 8) & 255, n & 255];
+}
+function derNode(tag, body) { return [tag].concat(derLen(body.length), body); }
+function derSeq(kids) { return derNode(0x30, [].concat.apply([], kids)); }
+function derSet(kids) { return derNode(0x31, [].concat.apply([], kids)); }
+function derInt(bytes) { return derNode(0x02, bytes); }
+function derOid(str) {
+  var p = str.split('.').map(Number), out = [p[0] * 40 + p[1]];
+  for (var i = 2; i < p.length; i++) {
+    var v = p[i], stack = [v & 0x7f];
+    v >>= 7;
+    while (v > 0) { stack.unshift((v & 0x7f) | 0x80); v >>= 7; }
+    out = out.concat(stack);
+  }
+  return derNode(0x06, out);
+}
+function derStr(tag, s) { return derNode(tag, strB(s)); }
+function derUtcTime(s) { return derStr(0x17, s); }
+function rdn(oid, value) { return derSet([derSeq([derOid(oid), derStr(0x0c, value)])]); }
+
+function fakeCert(opts) {
+  opts = opts || {};
+  var sigOid = opts.sigOid || '1.2.840.113549.1.1.11';
+  var name = derSeq([rdn('2.5.4.10', opts.org || 'Green Shoe Garage'), rdn('2.5.4.3', opts.cn || 'files.example.org')]);
+  var issuer = opts.issuerCn
+    ? derSeq([rdn('2.5.4.10', 'Green Shoe Garage'), rdn('2.5.4.3', opts.issuerCn)])
+    : name;
+  var bits = opts.keyBits || 2048;
+  var modulus = [0x00];
+  for (var i = 0; i < bits / 8; i++) modulus.push(0x80 + (i & 0x3f));
+  var spki = derSeq([
+    derSeq([derOid('1.2.840.113549.1.1.1'), [0x05, 0x00]]),
+    derNode(0x03, [0x00].concat(derSeq([derInt(modulus), derInt([0x01, 0x00, 0x01])])))
+  ]);
+  var san = opts.altNames ? derNode(0xa3, derSeq([derSeq([
+    derOid('2.5.29.17'),
+    derNode(0x04, derSeq(opts.altNames.map(function (n) { return derNode(0x82, strB(n)); })))
+  ])])) : [];
+  var tbs = derSeq([
+    derNode(0xa0, derInt([2])),
+    derInt(opts.serial || [0x0d, 0x1c, 0x2b, 0x3a]),
+    derSeq([derOid(sigOid), [0x05, 0x00]]),
+    issuer,
+    derSeq([derUtcTime(opts.notBefore || '250101000000Z'), derUtcTime(opts.notAfter || '350101000000Z')]),
+    name,
+    spki
+  ].concat(san.length ? [san] : []));
+  return derSeq([tbs, derSeq([derOid(sigOid), [0x05, 0x00]]), derNode(0x03, [0x00, 0xde, 0xad])]);
+}
+DN.fakeCert = fakeCert;
+
+function tlsRecord(type, body) {
+  return [type, 3, 3].concat(be16(body.length), body);
+}
+function hsMsg(type, body) {
+  return [type].concat([(body.length >> 16) & 255, (body.length >> 8) & 255, body.length & 255], body);
+}
+function serverHello(cipher, ext) {
+  var body = be16(0x0303).concat(new Array(32).fill(7), [0], be16(cipher), [0]);
+  ext = ext || [];
+  body = body.concat(be16(ext.length), ext);
+  return hsMsg(2, body);
+}
+function certMsg(certs) {
+  var list = [];
+  certs.forEach(function (c) {
+    list = list.concat([(c.length >> 16) & 255, (c.length >> 8) & 255, c.length & 255], c);
+  });
+  return hsMsg(11, [(list.length >> 16) & 255, (list.length >> 8) & 255, list.length & 255].concat(list));
+}
+function clientHello(sni, ciphers) {
+  var sniBytes = strB(sni);
+  var sniExt = be16(0).concat(be16(sniBytes.length + 5), be16(sniBytes.length + 3), [0], be16(sniBytes.length), sniBytes);
+  var curves = be16(10).concat(be16(6), be16(4), be16(29), be16(23));
+  var pf = be16(11).concat(be16(2), [1, 0]);
+  var exts = sniExt.concat(curves, pf);
+  var cs = [];
+  ciphers.forEach(function (c) { cs = cs.concat(be16(c)); });
+  var body = be16(0x0303).concat(new Array(32).fill(3), [0], be16(cs.length), cs, [1, 0], be16(exts.length), exts);
+  return hsMsg(1, body);
+}
+
+function snmpGet(community) {
+  var comm = strB(community);
+  var pdu = derNode(0xa0, derInt([0x1f]).concat(derInt([0]), derInt([0]), derSeq([])));
+  return derSeq([derInt([1])].concat([derNode(0x04, comm)], [pdu]));
+}
+function ldapBind(name, password) {
+  var body = derInt([3]).concat(derNode(0x04, strB(name)), derNode(0x80, strB(password)));
+  return derSeq([derInt([1]), derNode(0x60, body)]);
+}
+function krbAsReq() {
+  var etypes = derSeq([derInt([18]), derInt([17]), derInt([23])]);
+  var body = derSeq([
+    derNode(0xa1, derInt([5])),
+    derNode(0xa2, derInt([10])),
+    derNode(0xa4, derSeq([derNode(0xa1, derSeq([derStr(0x1b, 'svc_backup')]))])),
+    derNode(0xa8, etypes)
+  ]);
+  return derNode(0x6a, body);
+}
+function dhcpPacket(type, mac, hostname, offered) {
+  var p = [2, 1, 6, 0].concat(be32(0x39aa), be16(0), be16(0),
+    ipB('0.0.0.0'), ipB(offered || '0.0.0.0'), ipB('10.0.5.1'), ipB('0.0.0.0'), macB(mac));
+  while (p.length < 44) p.push(0);
+  while (p.length < 236) p.push(0);
+  p = p.concat([99, 130, 83, 99]);
+  p = p.concat([53, 1, type]);
+  if (hostname) p = p.concat([12, hostname.length], strB(hostname));
+  p = p.concat([54, 4], ipB('10.0.5.1'), [51, 4], be32(86400), [255]);
+  return p;
+}
+function rtpPacket(ssrc, seq, pt, samples) {
+  return [0x80, pt].concat(be16(seq), be32(seq * 160), be32(ssrc), samples);
+}
+function quicInitial() {
+  return [0xc3].concat(be32(1), [8], [1, 2, 3, 4, 5, 6, 7, 8], [4], [9, 9, 9, 9],
+    [0x00, 0x44, 0x9e]).concat(new Array(40).fill(0x5a));
+}
+function smb2(cmd, share) {
+  var h = [0xfe, 0x53, 0x4d, 0x42].concat(le16(64), le16(1), le32(0), le16(cmd), le16(1),
+    le32(0), le32(1), le32(0), le32(0), le32(0), le32(0), le32(0), le32(0), le32(0), le32(0));
+  while (h.length < 64) h.push(0);
+  var body = le16(9).concat(le16(0), le16(72), le16(share ? share.length * 2 : 0));
+  var name = [];
+  if (share) for (var i = 0; i < share.length; i++) name = name.concat(le16(share.charCodeAt(i)));
+  while (body.length < 8) body.push(0);
+  var full = h.concat(body, name);
+  return be32(full.length).concat(full);
+}
+
+DN.deepCapture = function () {
+  var f = [], t = 0;
+  var C = 'aa:00:11:22:33:44', S = '00:1c:aa:bb:cc:dd';
+  var cli = '10.0.5.40', srv = '10.0.5.10';
+  function push(frame, dt) {
+    t += (dt == null ? 1500 : dt);
+    f.push({ sec: 1750100000 + Math.floor(t / 1000000), usec: t % 1000000, data: frame });
+  }
+  function tcpTo(dstIp, sport, dport, seq, ack, flags, payload, fromClient) {
+    var a = fromClient === false ? srv : cli, b = fromClient === false ? cli : srv;
+    push(eth(fromClient === false ? S : C, fromClient === false ? C : S, 0x0800,
+      ip4(a, b, 6, tcp(sport, dport, seq, ack, flags, payload || []))));
+  }
+  function udpTo(a, b, sport, dport, payload) {
+    push(eth(a === cli ? C : S, a === cli ? S : C, 0x0800, ip4(a, b, 17, udp(sport, dport, payload))));
+  }
+
+  /* an HTTP download carrying a PNG and then an executable, split across
+     segments so only reassembly can put them back together */
+  var ci = 100, si = 900;
+  tcpTo(srv, 51000, 80, ci, 0, 0x02);
+  tcpTo(cli, 80, 51000, si, ci + 1, 0x12, [], false);
+  tcpTo(srv, 51000, 80, ci + 1, si + 1, 0x10);
+  var req = strB('GET /downloads/logo.png HTTP/1.1\r\nHost: files.example.org\r\n\r\n');
+  tcpTo(srv, 51000, 80, ci + 1, si + 1, 0x18, req);
+  var png = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+  for (var i = 0; i < 300; i++) png.push((i * 7) & 255);
+  var res = strB('HTTP/1.1 200 OK\r\nContent-Type: image/png\r\nContent-Length: ' + png.length + '\r\n\r\n');
+  tcpTo(cli, 80, 51000, si + 1, ci + 1 + req.length, 0x18, res, false);
+  var half = Math.floor(png.length / 2);
+  tcpTo(cli, 80, 51000, si + 1 + res.length, ci + 1 + req.length, 0x18, png.slice(0, half), false);
+  tcpTo(cli, 80, 51000, si + 1 + res.length + half, ci + 1 + req.length, 0x18, png.slice(half), false);
+
+  /* a second connection fetching something that is not what it says */
+  var c2 = 5000, s2 = 7000;
+  function tcp2(payload, seq, ack, flags, fromClient) {
+    var a = fromClient === false ? srv : cli, b = fromClient === false ? cli : srv;
+    push(eth(fromClient === false ? S : C, fromClient === false ? C : S, 0x0800,
+      ip4(a, b, 6, tcp(fromClient === false ? 80 : 51001, fromClient === false ? 51001 : 80,
+        seq, ack, flags, payload || []))));
+  }
+  tcp2([], c2, 0, 0x02);
+  tcp2([], s2, c2 + 1, 0x12, false);
+  tcp2([], c2 + 1, s2 + 1, 0x10);
+  var req2 = strB('GET /update/setup.bin HTTP/1.1\r\nHost: updates.example.org\r\n\r\n');
+  tcp2(req2, c2 + 1, s2 + 1, 0x18);
+  var exe = [0x4d, 0x5a, 0x90, 0x00];
+  for (i = 0; i < 200; i++) exe.push((i * 13) & 255);
+  var res2 = strB('HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: ' + exe.length + '\r\n\r\n');
+  tcp2(res2.concat(exe), s2 + 1, c2 + 1 + req2.length, 0x18, false);
+
+  /* a TLS 1.2 session with a certificate that is past its date and signed
+     with a broken hash, plus a weak cipher */
+  var c3 = 20000, s3 = 30000;
+  function tcp3(payload, seq, ack, flags, fromClient) {
+    var a = fromClient === false ? srv : cli, b = fromClient === false ? cli : srv;
+    push(eth(fromClient === false ? S : C, fromClient === false ? C : S, 0x0800,
+      ip4(a, b, 6, tcp(fromClient === false ? 443 : 51002, fromClient === false ? 51002 : 443,
+        seq, ack, flags, payload || []))));
+  }
+  tcp3([], c3, 0, 0x02);
+  tcp3([], s3, c3 + 1, 0x12, false);
+  tcp3([], c3 + 1, s3 + 1, 0x10);
+  var ch = tlsRecord(22, clientHello('files.example.org', [0xc02f, 0x0005, 0x002f]));
+  tcp3(ch, c3 + 1, s3 + 1, 0x18);
+  var expired = fakeCert({ cn: 'old.example.org', sigOid: '1.2.840.113549.1.1.5',
+                           keyBits: 1024, notBefore: '150101000000Z', notAfter: '160101000000Z',
+                           altNames: ['old.example.org'] });
+  var sh = tlsRecord(22, serverHello(0x0005));
+  var cm = certMsg([expired]);
+  /* split the certificate message across two records on purpose */
+  var cmA = cm.slice(0, 40), cmB = cm.slice(40);
+  var recs = sh.concat(tlsRecord(22, cmA), tlsRecord(22, cmB));
+  tcp3(recs.slice(0, 60), s3 + 1, c3 + 1 + ch.length, 0x18, false);
+  tcp3(recs.slice(60), s3 + 1 + 60, c3 + 1 + ch.length, 0x18, false);
+
+  /* management protocols worth a finding each */
+  udpTo(cli, srv, 40001, 161, snmpGet('public'));
+  udpTo(srv, cli, 161, 40001, snmpGet('public'));
+
+  var lb = ldapBind('cn=svc_scan,ou=service,dc=example,dc=org', 'hunter2!');
+  var c4 = 41000;
+  push(eth(C, S, 0x0800, ip4(cli, srv, 6, tcp(51003, 389, c4, 1, 0x18, lb))));
+
+  var kr = krbAsReq();
+  push(eth(C, S, 0x0800, ip4(cli, srv, 17, udp(51004, 88, kr))));
+
+  push(eth(C, S, 0x0800, ip4(cli, srv, 6, tcp(51005, 445, 60000, 1, 0x18, smb2(3, '\\\\fileserver\\payroll')))));
+  push(eth(C, S, 0x0800, ip4(cli, srv, 6, tcp(51006, 445, 61000, 1, 0x18,
+    be32(40).concat([0xff, 0x53, 0x4d, 0x42, 0x72], new Array(35).fill(0))))));
+
+  /* DHCP, then a phone call, then QUIC */
+  udpTo(cli, srv, 68, 67, dhcpPacket(3, C, 'shop-laptop-3'));
+  udpTo(srv, cli, 67, 68, dhcpPacket(5, C, null, '10.0.5.40'));
+
+  var sipInvite = strB('INVITE sip:2015550143@example.org SIP/2.0\r\n' +
+    'Via: SIP/2.0/UDP 10.0.5.40:5060\r\nFrom: "Front desk" <sip:1001@example.org>;tag=abc\r\n' +
+    'To: <sip:2015550143@example.org>\r\nCall-ID: 9f8e7d6c@10.0.5.40\r\nCSeq: 1 INVITE\r\n\r\n');
+  udpTo(cli, srv, 5060, 5060, sipInvite);
+  var samples = [];
+  for (i = 0; i < 160; i++) samples.push((0x7f + i) & 255);
+  for (i = 0; i < 12; i++) {
+    /* one sequence number is skipped, so loss is visible */
+    udpTo(cli, srv, 40000, 40002, rtpPacket(0x1a2b3c4d, i < 6 ? i : i + 1, 0, samples));
+  }
+  udpTo(cli, srv, 51007, 443, quicInitial());
+
+  return { name: 'deep-fixture.pcap', buffer: writePcap(f), frames: f.length };
+};
+
 DN.selfTest = function () {
   var results = [], pass = 0, fail = 0;
   function ok(name, cond, detail) {
@@ -2759,29 +4647,29 @@ DN.selfTest = function () {
   eq('big endian pcap packet count', beCap.packets.length, 1);
   eq('endianness detected', leCap.endian + '/' + beCap.endian, 'little/big');
   eq('link type read', leCap.linktype, 1);
-  ok('timestamps agree across endianness', Math.abs(leCap.packets[0].ts - beCap.packets[0].ts) < 0.001);
-  eq('timestamp converts to ms', leCap.packets[0].ts, 1700000000500);
+  ok('timestamps agree across endianness', Math.abs(leCap.packets.get(0).ts - beCap.packets.get(0).ts) < 0.001);
+  eq('timestamp converts to ms', leCap.packets.get(0).ts, 1700000000500);
 
   var ngCap = DN.readCapture(writePcapng(frames, 1));
   eq('pcapng format detected', ngCap.format, 'pcapng');
   eq('pcapng packet count', ngCap.packets.length, 1);
   eq('pcapng interface recorded', ngCap.interfaces.length, 1);
-  ok('pcapng timestamp matches pcap', Math.abs(ngCap.packets[0].ts - leCap.packets[0].ts) < 0.001,
-     ngCap.packets[0].ts + ' vs ' + leCap.packets[0].ts);
+  ok('pcapng timestamp matches pcap', Math.abs(ngCap.packets.get(0).ts - leCap.packets.get(0).ts) < 0.001,
+     ngCap.packets.get(0).ts + ' vs ' + leCap.packets.get(0).ts);
 
   var bad = W([1, 2, 3, 4].concat(new Array(40).fill(0))).buffer;
   var threw = false; try { DN.readCapture(bad); } catch (e) { threw = true; }
   ok('rubbish file is rejected', threw);
 
   /* dissection */
-  var d0 = DN.dissect(leCap.packets[0]);
+  var d0 = DN.dissect(leCap.packets.get(0));
   eq('arp dissected', d0.proto, 'ARP');
   eq('arp source recorded', d0.src, '10.0.0.5');
   ok('arp info is readable', d0.info.indexOf('Who has 10.0.0.1') === 0, d0.info);
 
   function one(frame) {
     var c = DN.readCapture(writePcap([{ sec: 1700000000, usec: 0, data: frame }]));
-    return DN.dissect(c.packets[0]);
+    return DN.dissect(c.packets.get(0));
   }
   var dTcp = one(eth('aa:bb:cc:00:00:01', 'aa:bb:cc:00:00:02', 0x0800, ip4('192.168.1.10', '192.168.1.20', 6, tcp(51000, 443, 1, 0, 0x02))));
   eq('tcp transport', dTcp.transport, 'TCP');
@@ -2893,7 +4781,7 @@ DN.selfTest = function () {
   /* raw ip link type */
   var rawCap = DN.readCapture(writePcap(
     [{ sec: 1700000000, usec: 0, data: ip4('10.9.9.1', '10.9.9.2', 17, udp(4444, 5555, [9, 9])) }], { linktype: 101 }));
-  var rawRow = DN.dissect(rawCap.packets[0]);
+  var rawRow = DN.dissect(rawCap.packets.get(0));
   eq('raw ip link type dissects', rawRow.src, '10.9.9.1');
 
 
@@ -3078,6 +4966,233 @@ DN.selfTest = function () {
   /* the wired fixtures must be untouched by any of this */
   ok('the wired sample has no air section', !A.wifi);
 
+
+  /* ---------------- v1.3 scale ---------------- */
+  var scap = DN.readCapture(DN.sampleCapture().buffer);
+  var sidx = DN.buildIndex(scap.packets);
+  var sord = DN.orderByTime(sidx);
+  eq('the index covers every packet', sidx.count, scap.packets.length);
+  ok('the sample is already in time order', sord.wasSorted);
+
+  /* the shallow classifier must agree with full dissection */
+  function deepCat(r) {
+    if (r.transport === 'TCP') return DN.CAT_TCP;
+    if (r.transport === 'UDP') return DN.CAT_UDP;
+    if (r.proto === 'ICMP' || r.proto === 'ICMPv6') return DN.CAT_ICMP;
+    if (r.proto === 'ARP') return DN.CAT_ARP;
+    return DN.CAT_OTHER;
+  }
+  var srows = scap.packets.map(DN.dissect);
+  var disagree = srows.filter(function (r, i) { return deepCat(r) !== sidx.cat[i]; });
+  eq('peek agrees with full dissection on every wired packet', disagree.length, 0);
+
+  var arows2 = null;
+  var acap2 = DN.readCapture(DN.airCapture().buffer);
+  var aidx = DN.buildIndex(acap2.packets);
+  ok('the air is classified as the air', Array.prototype.some.call(aidx.cat, function (c) { return c === DN.CAT_WIFI; }));
+  ok('ARP over the air is still seen as ARP through the shallow read',
+     Array.prototype.indexOf.call(aidx.cat, DN.CAT_ARP) >= 0);
+
+  /* binary search over the ordering is what replaces the full scan */
+  var t0i = sidx.ts[sord.order[0]], t1i = sidx.ts[sord.order[sidx.count - 1]];
+  eq('lower bound of the whole span is the start', DN.lowerBound(sidx, sord.order, t0i), 0);
+  eq('upper bound of the whole span is the end', DN.upperBound(sidx, sord.order, t1i), sidx.count);
+  var mid = (t0i + t1i) / 2;
+  var lo = DN.lowerBound(sidx, sord.order, mid), hi = DN.upperBound(sidx, sord.order, t1i);
+  var byScan = 0;
+  for (var si = 0; si < sidx.count; si++) if (sidx.ts[si] >= mid && sidx.ts[si] <= t1i) byScan++;
+  eq('binary search picks the same packets a scan would', hi - lo, byScan);
+
+  /* out of order files get sorted rather than misdrawn */
+  var jumbled = { ts: new Float64Array([50, 10, 30]), len: new Uint32Array([1, 1, 1]),
+                  cat: new Uint8Array([0, 0, 0]), count: 3 };
+  var jord = DN.orderByTime(jumbled);
+  ok('an out of order file is noticed', !jord.wasSorted);
+  eq('and put in time order', Array.from(jord.order).join(','), '1,2,0');
+
+  /* the drag bar draws from the index without dissecting anything */
+  var dens = DN.densityBuckets(sidx, sord.order, 20, t0i, t1i);
+  eq('every packet lands in a bucket',
+     dens.buckets.reduce(function (n, col) { return n + col.reduce(function (a, b) { return a + b; }, 0); }, 0),
+     sidx.count);
+  ok('the busiest bucket sets the peak', dens.peak >= 1, dens.peak);
+
+  /* several files read as one timeline */
+  var capA = DN.readCapture(DN.sampleCapture().buffer); capA.name = 'a.pcap';
+  var capB = DN.readCapture(DN.reasmCapture().buffer); capB.name = 'b.pcap';
+  var merged = DN.mergeCaptures([capA, capB]);
+  eq('the merged set holds every packet', merged.packets.length, capA.packets.length + capB.packets.length);
+  eq('the merged set names both files', merged.sources.length, 2);
+  ok('the merged timeline is in time order', (function () {
+    for (var i = 1; i < merged.packets.length; i++) if (merged.packets.get(i).ts < merged.packets.get(i - 1).ts) return false;
+    return true;
+  })());
+  ok('every packet knows which file it came from',
+     merged.packets.map(function (p) { return p.source; })
+       .every(function (n) { return n === 'a.pcap' || n === 'b.pcap'; }));
+  ok('packet numbering is rewritten across the set',
+     merged.packets.map(function (p, i) { return p.i === i; })
+       .every(function (x) { return x; }));
+  var mergedAir = DN.mergeCaptures([capA, (function () { var c = DN.readCapture(DN.airCapture().buffer); c.name = 'air.pcap'; return c; })()]);
+  ok('mixed link types are flagged rather than silently mixed', mergedAir.mixedLinktypes);
+  ok('and the warning says which types', mergedAir.warnings.some(function (w) { return /do not share a link type/.test(w); }));
+  eq('a single capture passes through merge unchanged', DN.mergeCaptures([capA]).packets.length, capA.packets.length);
+
+  /* the reader holds positions, not packet objects */
+  ok('the packet list is lazy', scap.packets instanceof DN.PacketList);
+  ok('asking twice gives equal packets', (function () {
+    var a = scap.packets.get(3), b = scap.packets.get(3);
+    return a.i === b.i && a.ts === b.ts && a.caplen === b.caplen && a.bytes[0] === b.bytes[0];
+  })());
+  ok('packet bytes are a view on the file, not a copy',
+     scap.packets.get(0).bytes.buffer === scap.packets.get(1).bytes.buffer);
+  eq('out of range asks return nothing', scap.packets.get(scap.packets.length), null);
+  eq('slice returns real packets', scap.packets.slice(0, 3).length, 3);
+
+  /* dissecting only the net is the whole point, so prove it holds up */
+  ok('a merged set still dissects correctly', (function () {
+    var rows = merged.packets.slice(0, 20).map(DN.dissect);
+    return rows.filter(function (r) { return r.dissectError; }).length === 0;
+  })());
+
+
+  /* ---------------- v1.4 decoders, certificates and carving ---------------- */
+  eq('sha256 of nothing', DN.sha256(W([])), 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855');
+  eq('sha256 of abc', DN.sha256(W([97, 98, 99])), 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad');
+  eq('sha256 across a block boundary', DN.sha256(W(new Array(56).fill(97))),
+     'b35439a4ac6f0948b6d6f9e3c6af0f5f590ce20f1bde7090ef7970686ec6738a');
+  eq('md5 of nothing', DN.md5(W([])), 'd41d8cd98f00b204e9800998ecf8427e');
+  eq('md5 of abc', DN.md5(W([97, 98, 99])), '900150983cd24fb0d6963f7d28e17f72');
+  eq('the published JA3 reference vector still hashes to its published value',
+     DN.md5(W(strB('769,4-5-10-9-100-98-3-6-19-18-99,,,'))), 'de350869b8c85de67a350c8d186f11e6');
+
+  /* the DER walker and the certificate reader, against a certificate we built */
+  var goodCertBytes = W(DN.fakeCert({ cn: 'files.example.org', altNames: ['files.example.org', 'cdn.example.org'] }));
+  var gc = DN.readCertificate(goodCertBytes, 0, goodCertBytes.length);
+  ok('a certificate parses at all', !!gc);
+  eq('certificate version', gc.version, 3);
+  eq('subject common name', gc.subjectCn, 'files.example.org');
+  ok('the whole subject is kept', /O=Green Shoe Garage/.test(gc.subject), gc.subject);
+  eq('a certificate issued by itself is called self signed', gc.selfSigned, true);
+  eq('key type', gc.keyType, 'RSA');
+  eq('key size', gc.keyBits, 2048);
+  eq('signature algorithm', gc.signatureAlgorithm, 'SHA-256 with RSA');
+  eq('a current signature algorithm is not flagged', gc.weakSignature, null);
+  eq('subject alternative names come out', (gc.altNames || []).join(','), 'files.example.org,cdn.example.org');
+  ok('validity dates parse', gc.notBefore > 0 && gc.notAfter > gc.notBefore, gc.notBefore + ' to ' + gc.notAfter);
+  eq('a UTCTime year before 50 reads as this century',
+     new Date(gc.notBefore).getUTCFullYear(), 2025);
+
+  var weakCertBytes = W(DN.fakeCert({ cn: 'old.example.org', sigOid: '1.2.840.113549.1.1.5', keyBits: 1024,
+                                      issuerCn: 'Some Authority' }));
+  var wc = DN.readCertificate(weakCertBytes, 0, weakCertBytes.length);
+  eq('a SHA-1 signature is called out', wc.weakSignature, 'SHA-1');
+  eq('a small key is measured', wc.keyBits, 1024);
+  eq('a certificate issued by someone else is not self signed', wc.selfSigned, false);
+
+  /* the deep fixture, end to end */
+  var dc = DN.deepCapture();
+  var dcap = DN.readCapture(dc.buffer);
+  var drows = dcap.packets.map(DN.dissect);
+  var DRE = DN.reassemble(drows, dcap.packets);
+  var DA = DN.analyze(drows, { name: dc.name, reasm: DRE });
+  var DF = DN.findings(DA);
+  eq('no dissector errors on the deep fixture', DA.dissectErrors, 0);
+  function deepSays(re) { return DF.items.some(function (x) { return re.test(x.title) || re.test(x.text); }); }
+
+  /* carving */
+  eq('two files were carved out of the streams', DA.carved.length, 2);
+  var pngFile = DA.carved.filter(function (f) { return f.sniffedType === 'PNG image'; })[0];
+  ok('the image was carved', !!pngFile);
+  eq('the carved image is named from its URL', pngFile && pngFile.name, 'logo.png');
+  eq('the carved image is the right size', pngFile && pngFile.size, 308);
+  ok('the carved image is whole even though it crossed two segments', pngFile && pngFile.complete);
+  eq('the carved image hashes to a known value', pngFile && pngFile.sha256, DN.sha256(pngFile.bytes));
+  eq('carving produces both hashes', typeof (pngFile && pngFile.md5), 'string');
+  var exeFile = DA.carved.filter(function (f) { return f.executable; })[0];
+  ok('an executable is recognised by its magic number, not its extension', !!exeFile);
+  eq('and by the type it was served as', exeFile && exeFile.declaredType, 'text/plain');
+  ok('a file that is not what it claims is flagged', exeFile && exeFile.typeMismatch);
+  ok('findings raise the executable over plain HTTP', deepSays(/executable was downloaded over plain HTTP/i));
+  ok('findings explain why that matters', deepSays(/replaced in transit/i));
+  eq('a PNG is sniffed correctly', DN.sniffType(W([0x89, 0x50, 0x4e, 0x47])).type, 'PNG image');
+  eq('a PDF is sniffed correctly', DN.sniffType(W(strB('%PDF-1.7'))).type, 'PDF document');
+  eq('plain text is recognised as text', DN.sniffType(W(strB('hello there, this is text'))).type, 'text');
+  eq('random bytes are left unrecognised', DN.sniffType(W([0x00, 0xfe, 0x03, 0x91, 0x77])).type, 'unrecognised');
+
+  /* TLS read deeply */
+  var tlsSess = DA.tls.filter(function (t) { return t.session.certificates.length; })[0];
+  ok('a TLS session with a certificate was found', !!tlsSess);
+  eq('the certificate came out of a message split across two records',
+     tlsSess && tlsSess.session.certificates.length, 1);
+  eq('the certificate subject survived reassembly',
+     tlsSess && tlsSess.session.certificates[0].subjectCn, 'old.example.org');
+  eq('the negotiated cipher is named', tlsSess && tlsSess.session.cipher, 'RSA_WITH_RC4_128_SHA');
+  ok('a broken cipher is called broken', tlsSess && /RC4/.test(tlsSess.session.weakCipher || ''), tlsSess && tlsSess.session.weakCipher);
+  ok('every certificate carries its own fingerprint',
+     tlsSess && /^[0-9a-f]{64}$/.test(tlsSess.session.certificates[0].sha256));
+  var chSess = DA.tls.filter(function (t) { return t.session.client; })[0];
+  ok('the client hello was parsed', !!chSess);
+  eq('the requested name came out of the client hello', chSess && chSess.session.client.sni, 'files.example.org');
+  ok('a JA3 fingerprint was computed', chSess && /^[0-9a-f]{32}$/.test(chSess.session.client.ja3));
+  ok('the fingerprint is built from the documented fields',
+     chSess && chSess.session.client.ja3String.split(',').length === 5, chSess && chSess.session.client.ja3String);
+  ok('the same client hello always gives the same fingerprint',
+     DN.parseClientHello(W(strB('x')), 0, 1) === null ||
+     chSess.session.client.ja3 === DN.md5(W(strB(chSess.session.client.ja3String))));
+  ok('findings report the expired certificate', deepSays(/already expired/i));
+  ok('findings report the broken signature hash', deepSays(/broken hash/i));
+  ok('findings report the undersized key', deepSays(/under 2048 bits/i));
+  ok('findings say plainly that TLS 1.3 hides the certificate', deepSays(/certificate is encrypted/i));
+
+  /* the management protocols */
+  eq('SNMP community strings were read', DA.snmp.length, 2);
+  eq('and the community itself', DA.snmp[0].community, 'public');
+  ok('a default community string is flagged, not merely noted',
+     DF.items.some(function (x) { return /SNMP/.test(x.title) && x.severity === 'flag'; }));
+  ok('findings explain what a community string is', deepSays(/whole of the authentication/i));
+
+  eq('an LDAP simple bind was seen', DA.ldap.length, 1);
+  eq('and the account it bound as', DA.ldap[0].name, 'cn=svc_scan,ou=service,dc=example,dc=org');
+  ok('the password length is recorded and the password is not', DA.ldap[0].passwordLength === 8 && DA.ldap[0].password === undefined);
+  ok('findings raise the cleartext bind', deepSays(/simple bind/i));
+
+  eq('Kerberos was recognised', DA.kerberos.length, 1);
+  eq('the message type', DA.kerberos[0].message, 'AS-REQ');
+  eq('the principal', DA.kerberos[0].principal, 'svc_backup');
+  ok('the encryption types on offer were listed', DA.kerberos[0].etypes.indexOf('AES256-CTS') >= 0, DA.kerberos[0].etypes.join(','));
+  ok('RC4 is picked out as the weak one', DA.kerberos[0].weak.indexOf('RC4') >= 0);
+  ok('findings mention what an RC4 ticket allows', deepSays(/Kerberoasting/i));
+
+  eq('both SMB versions were seen', DA.smb.length, 2);
+  eq('the share name came out of the tree connect',
+     DA.smb.filter(function (x) { return x.share; })[0].share, '\\\\fileserver\\payroll');
+  ok('SMB version 1 is flagged', DF.items.some(function (x) { return /SMB version 1/.test(x.title) && x.severity === 'flag'; }));
+
+  eq('DHCP messages were read', DA.dhcp.length, 2);
+  eq('a device named itself', DA.dhcp[0].hostname, 'shop-laptop-3');
+  eq('the address handed out was recorded', DA.dhcp[1].address, '10.0.5.40');
+  ok('findings warn that a DHCP hostname is not identity', deepSays(/useless as identity/i));
+
+  /* voice */
+  eq('an RTP stream was recognised by shape, not by port', DA.rtp.length, 1);
+  eq('the codec was named', DA.rtp[0].codec, 'G.711 u-law');
+  eq('the missing packet was counted', DA.rtp[0].lost, 1);
+  eq('SIP signalling was read', DA.sip.length, 1);
+  eq('the method', DA.sip[0].method, 'INVITE');
+  ok('the call id was kept', /9f8e7d6c/.test(DA.sip[0].callId || ''));
+  var wav = DN.rtpToWav([W([0xff, 0x7f, 0x00]), W([0x80])], 0);
+  eq('a WAV header is written', String.fromCharCode(wav[0], wav[1], wav[2], wav[3]), 'RIFF');
+  eq('the WAV is 16 bit mono at 8 kHz',
+     wav[34] + ',' + (wav[24] | (wav[25] << 8)) + ',' + wav[22], '16,8000,1');
+  eq('every G.711 byte becomes one sample', wav.length, 44 + 4 * 2);
+
+  /* QUIC */
+  eq('a QUIC initial packet was recognised', DA.quic.length, 1);
+  eq('the version was read', DA.quic[0].version, 'QUIC v1');
+  ok('findings say plainly that QUIC hides the hostname', deepSays(/no hostname visible/i));
+  ok('and that no attempt is made to decrypt it', deepSays(/does not attempt to decrypt QUIC/i));
+
   return { pass: pass, fail: fail, results: results };
 };
 
@@ -3095,6 +5210,7 @@ var plural = DN.plural;
 
 var S = {
   capture: null, rows: [], all: null, view: null, findings: null,
+  index: null, order: null, dissectCapped: false,
   netA: 0, netB: 1, t0: 0, t1: 1, selectedConv: null,
   sortKey: 'bytes', sortDir: -1, debug: false, log: []
 };
@@ -3168,7 +5284,7 @@ $('btnTest').addEventListener('click', function () {
 /* ---- intake -------------------------------------------------------- */
 var intake = $('intake');
 window.DRAGNET_TEST_INGEST = ingest;   /* used by the headless page test */
-$('fileIn').addEventListener('change', function (e) { if (e.target.files[0]) loadFile(e.target.files[0]); });
+$('fileIn').addEventListener('change', function (e) { if (e.target.files.length) loadFiles(e.target.files); });
 $('btnDemo').addEventListener('click', function () {
   var s = DN.sampleCapture();
   ingest(s.buffer, s.name + ' (built in sample)');
@@ -3181,31 +5297,79 @@ $('btnDemo').addEventListener('click', function () {
 });
 document.addEventListener('drop', function (e) {
   e.preventDefault();
-  var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
-  if (f) loadFile(f);
+  var fl = e.dataTransfer && e.dataTransfer.files;
+  if (fl && fl.length) loadFiles(fl);
 });
 
-function loadFile(file) {
-  dbg('opening', file.name, file.size + ' bytes');
-  var rd = new FileReader();
-  rd.onerror = function () { fatal('The browser could not read that file.'); };
-  rd.onload = function () {
-    var buf = rd.result;
-    var u = new Uint8Array(buf);
-    if (u.length > 2 && u[0] === 0x1f && u[1] === 0x8b) {
-      if (typeof DecompressionStream === 'undefined') {
-        fatal('That file is gzipped and this browser cannot unzip it here. Unzip it first, then open the .pcap.');
+function progress(fraction, note) {
+  var bar = $('loadBar');
+  if (fraction == null) { bar.hidden = true; return; }
+  $('dragbar').hidden = false;
+  bar.hidden = false;
+  $('loadFill').style.width = Math.round(Math.max(0, Math.min(1, fraction)) * 100) + '%';
+  $('loadNote').textContent = note || '';
+}
+
+function readOne(file) {
+  return new Promise(function (resolve, reject) {
+    var rd = new FileReader();
+    rd.onerror = function () { reject(new Error('The browser could not read ' + file.name + '.')); };
+    rd.onload = function () {
+      var buf = rd.result, u = new Uint8Array(buf);
+      if (u.length > 2 && u[0] === 0x1f && u[1] === 0x8b) {
+        if (typeof DecompressionStream === 'undefined') {
+          reject(new Error(file.name + ' is gzipped and this browser cannot unzip it here. Unzip it first, then open the capture.'));
+          return;
+        }
+        dbg('gzip detected, inflating', file.name);
+        new Response(new Blob([buf]).stream().pipeThrough(new DecompressionStream('gzip'))).arrayBuffer()
+          .then(function (b) { resolve({ buf: b, name: file.name }); })
+          .catch(function () { reject(new Error(file.name + ' would not inflate.')); });
         return;
       }
-      dbg('gzip detected, inflating');
-      new Response(new Blob([buf]).stream().pipeThrough(new DecompressionStream('gzip'))).arrayBuffer()
-        .then(function (b) { ingest(b, file.name); })
-        .catch(function () { fatal('That gzip file would not inflate.'); });
+      resolve({ buf: buf, name: file.name });
+    };
+    rd.readAsArrayBuffer(file);
+  });
+}
+
+function loadFile(file) { loadFiles([file]); }
+
+function loadFiles(fileList) {
+  var files = Array.prototype.slice.call(fileList);
+  files.sort(function (a, b) { return a.name < b.name ? -1 : a.name > b.name ? 1 : 0; });
+  dbg('opening', files.length + ' file(s)');
+  var caps = [], i = 0;
+  progress(0, 'reading ' + files[0].name);
+
+  function next() {
+    if (i >= files.length) {
+      progress(0.98, 'indexing');
+      setTimeout(function () {
+        try { ingestCaptures(caps); }
+        catch (e) { progress(null); fatal(e && e.message ? e.message : String(e)); return; }
+        progress(null);
+      }, 0);
       return;
     }
-    ingest(buf, file.name);
-  };
-  rd.readAsArrayBuffer(file);
+    var f = files[i];
+    progress(i / files.length, 'reading ' + f.name + (files.length > 1 ? '  (' + (i + 1) + ' of ' + files.length + ')' : ''));
+    readOne(f).then(function (res) {
+      var cap;
+      try { cap = DN.readCapture(res.buf, { maxPackets: DN.MAX_INDEX }); }
+      catch (e) {
+        progress(null);
+        fatal(files.length > 1 ? (res.name + ': ' + e.message) : e.message);
+        return;
+      }
+      cap.name = res.name;
+      cap.fileBytes = res.buf.byteLength;
+      caps.push(cap);
+      i++;
+      setTimeout(next, 0);
+    }).catch(function (e) { progress(null); fatal(e.message); });
+  }
+  next();
 }
 
 function fatal(msg) {
@@ -3219,23 +5383,41 @@ function fatal(msg) {
 }
 
 function ingest(buf, name) {
-  var t0 = performance.now();
   var cap;
-  try { cap = DN.readCapture(buf, { maxPackets: 400000 }); }
+  try { cap = DN.readCapture(buf, { maxPackets: DN.MAX_INDEX }); }
   catch (e) { fatal(e.message); return; }
+  cap.name = name;
+  cap.fileBytes = buf.byteLength;
+  ingestCaptures([cap]);
+}
+
+function ingestCaptures(caps) {
+  var t0 = performance.now();
+  var fileBytes = caps.reduce(function (n, c) { return n + (c.fileBytes || 0); }, 0);
+  var cap = DN.mergeCaptures(caps);
+  var name = caps.length === 1 ? caps[0].name
+    : caps.length + ' files: ' + caps.map(function (c) { return c.name; }).join(', ');
   dbg('read', cap.format, cap.packets.length + ' packets', (performance.now() - t0).toFixed(0) + ' ms');
 
   S.capture = cap;
   S.capture.name = name;
-  S.rows = cap.packets.map(DN.dissect);
-  dbg('dissected in', (performance.now() - t0).toFixed(0) + ' ms');
+  S.rows = [];
+  S.index = DN.buildIndex(cap.packets);
+  var ob = DN.orderByTime(S.index);
+  S.order = ob.order;
+  dbg('indexed', cap.packets.length + ' packets in', (performance.now() - t0).toFixed(0) + ' ms',
+      ob.wasSorted ? '(already in time order)' : '(sorted by time)');
+  if (!ob.wasSorted) {
+    cap.warnings = cap.warnings.concat(['Packets in this file are not in time order. They have been sorted, so the ladder and the drag bar read correctly.']);
+  }
 
-  S.defrag = DN.defragment(S.rows, cap.packets);
-  if (S.defrag.fragments) dbg('defragment', S.defrag.datagrams + ' datagrams from ' + S.defrag.fragments + ' fragments');
-
-  var withTime = S.rows.filter(function (r) { return r.ts > 0; });
-  S.t0 = withTime.length ? Math.min.apply(null, withTime.map(function (r) { return r.ts; })) : 0;
-  S.t1 = withTime.length ? Math.max.apply(null, withTime.map(function (r) { return r.ts; })) : 1;
+  var lo = Infinity, hi = -Infinity;
+  for (var q = 0; q < S.index.count; q++) {
+    var tv = S.index.ts[q];
+    if (tv > 0) { if (tv < lo) lo = tv; if (tv > hi) hi = tv; }
+  }
+  S.t0 = lo === Infinity ? 0 : lo;
+  S.t1 = hi === -Infinity ? 1 : hi;
   if (S.t1 <= S.t0) S.t1 = S.t0 + 1;
   S.netA = 0; S.netB = 1; S.selectedConv = null;
 
@@ -3245,9 +5427,12 @@ function ingest(buf, name) {
   $('main').hidden = false;
 
   $('capName').textContent = name;
-  $('capSpan').textContent = cap.format + ' \u00b7 ' + (DN.LINKTYPES[cap.linktype] || ('link ' + cap.linktype)) +
-    ' \u00b7 ' + cap.packets.length + ' packets \u00b7 ' + DN.bytesHuman(buf.byteLength);
+  $('capSpan').textContent = cap.format + ' \u00b7 ' +
+    (cap.mixedLinktypes ? 'mixed link types' : (DN.LINKTYPES[cap.linktype] || ('link ' + cap.linktype))) +
+    ' \u00b7 ' + cap.packets.length.toLocaleString() + ' packets' +
+    (fileBytes ? ' \u00b7 ' + DN.bytesHuman(fileBytes) : '');
 
+  evLoad();
   showWarnings(cap);
   layoutNet();
   drawStrip();
@@ -3265,19 +5450,12 @@ function showWarnings(cap) {
 var strip = $('strip'), canvas = $('stripCanvas'), netEl = $('net');
 var CATS = [
   { k: 'tcp', v: '--cool' }, { k: 'udp', v: '--ok' }, { k: 'icmp', v: '--violet' },
-  { k: 'arp', v: '--warn' }, { k: 'other', v: '--ink-faint' }
+  { k: 'arp', v: '--warn' }, { k: 'other', v: '--ink-faint' }, { k: '802.11', v: '--brass' }
 ];
-function catOf(r) {
-  if (r.transport === 'TCP') return 0;
-  if (r.transport === 'UDP') return 1;
-  if (r.proto === 'ICMP' || r.proto === 'ICMPv6') return 2;
-  if (r.proto === 'ARP') return 3;
-  return 4;
-}
 function cssVar(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || '#888'; }
 
 function drawStrip() {
-  if (!S.rows.length) return;
+  if (!S.index || !S.index.count) return;
   var dpr = window.devicePixelRatio || 1;
   var w = strip.clientWidth, h = strip.clientHeight;
   canvas.width = Math.max(1, Math.round(w * dpr));
@@ -3287,25 +5465,15 @@ function drawStrip() {
   ctx.clearRect(0, 0, w, h);
 
   var cols = Math.max(40, Math.floor(w));
-  var buckets = [];
   var i, k;
-  for (i = 0; i < cols; i++) buckets.push([0, 0, 0, 0, 0]);
-  var span = S.t1 - S.t0;
-  var peak = 1;
-  for (i = 0; i < S.rows.length; i++) {
-    var r = S.rows[i];
-    var x = Math.min(cols - 1, Math.max(0, Math.floor((r.ts - S.t0) / span * cols)));
-    var c = catOf(r);
-    buckets[x][c]++;
-    var tot = buckets[x][0] + buckets[x][1] + buckets[x][2] + buckets[x][3] + buckets[x][4];
-    if (tot > peak) peak = tot;
-  }
+  var d = DN.densityBuckets(S.index, S.order, cols, S.t0, S.t1);
+  var buckets = d.buckets, peak = d.peak;
   var colors = CATS.map(function (c) { return cssVar(c.v); });
   var cw = w / cols;
   var scale = h / Math.log(peak + 1);
   for (i = 0; i < cols; i++) {
     var y = h;
-    for (k = 0; k < 5; k++) {
+    for (k = 0; k < 6; k++) {
       var n = buckets[i][k];
       if (!n) continue;
       var hh = Math.max(1, Math.log(n + 1) * scale);
@@ -3326,7 +5494,7 @@ function layoutNet() {
 
 var drag = null;
 strip.addEventListener('pointerdown', function (e) {
-  if (!S.rows.length) return;
+  if (!S.index || !S.index.count) return;
   var rect = strip.getBoundingClientRect();
   var f = (e.clientX - rect.left) / rect.width;
   var onNet = e.target === netEl || (e.target.parentNode === netEl);
@@ -3371,18 +5539,41 @@ function netBounds() {
   return { a: S.t0 + S.netA * span, b: S.t0 + S.netB * span };
 }
 function rowsInNet() {
-  if (S.netA <= 0 && S.netB >= 1) return S.rows;
   var b = netBounds();
-  return S.rows.filter(function (r) { return r.ts >= b.a && r.ts <= b.b; });
+  var whole = (S.netA <= 0 && S.netB >= 1);
+  var from = whole ? 0 : DN.lowerBound(S.index, S.order, b.a);
+  var to = whole ? S.order.length : DN.upperBound(S.index, S.order, b.b);
+  var count = Math.max(0, to - from);
+  S.dissectCapped = false;
+  if (count > DN.MAX_DISSECT) { to = from + DN.MAX_DISSECT; S.dissectCapped = count; }
+  var out = [], packets = S.capture.packets;
+  for (var k = from; k < to; k++) out.push(DN.dissect(packets.get(S.order[k])));
+  return out;
+}
+function packetsInNet() {
+  var b = netBounds();
+  var whole = (S.netA <= 0 && S.netB >= 1);
+  var from = whole ? 0 : DN.lowerBound(S.index, S.order, b.a);
+  var to = whole ? S.order.length : DN.upperBound(S.index, S.order, b.b);
+  return Math.max(0, to - from);
 }
 function updateNetReadout() {
   var b = netBounds();
   var whole = (S.netA <= 0 && S.netB >= 1);
   $('netRange').textContent = whole ? 'whole capture'
     : (DN.stamp(b.a) + '  to  ' + DN.stamp(b.b) + '   (' + DN.secs((b.b - b.a) / 1000) + ')');
-  var n = rowsInNet();
-  $('netCount').textContent = n.length;
-  $('netBytes').textContent = DN.bytesHuman(n.reduce(function (s, r) { return s + r.origlen; }, 0));
+  var from = whole ? 0 : DN.lowerBound(S.index, S.order, b.a);
+  var to = whole ? S.order.length : DN.upperBound(S.index, S.order, b.b);
+  var bytes = 0;
+  for (var k = from; k < to; k++) bytes += S.index.len[S.order[k]];
+  $('netCount').textContent = (to - from);
+  $('netBytes').textContent = DN.bytesHuman(bytes);
+  var cap = $('netCap');
+  if (S.dissectCapped) {
+    cap.hidden = false;
+    cap.textContent = 'reading the first ' + DN.MAX_DISSECT.toLocaleString() + ' of ' +
+      S.dissectCapped.toLocaleString() + ' packets in this net. Narrow it to read the rest.';
+  } else cap.hidden = true;
 }
 
 /* ---- recompute ------------------------------------------------------ */
@@ -3390,6 +5581,7 @@ function recompute() {
   var t0 = performance.now();
   var view = rowsInNet();
   S.view = view;
+  S.defrag = DN.defragment(view, S.capture.packets);
   S.reasm = DN.reassemble(view, S.capture.packets);
   S.all = DN.analyze(view, { name: S.capture ? S.capture.name : '', format: S.capture ? S.capture.format : '',
                              reasm: S.reasm, defrag: S.defrag });
@@ -3400,6 +5592,7 @@ function recompute() {
   renderLadder();
   renderFindings();
   renderPackets();
+  renderEvidence();
   dbg('recomputed', view.length + ' packets in', (performance.now() - t0).toFixed(0) + ' ms');
 }
 
@@ -3410,7 +5603,7 @@ tabs.forEach(function (t) {
 });
 function selectStation(name) {
   tabs.forEach(function (t) { t.setAttribute('aria-selected', String(t.dataset.st === name)); });
-  ['catch', 'breakdown', 'ladder', 'findings', 'packets'].forEach(function (s) {
+  ['catch', 'breakdown', 'ladder', 'findings', 'packets', 'evidence'].forEach(function (s) {
     $('st-' + s).hidden = (s !== name);
   });
   $('main').scrollTop = 0;
@@ -3701,6 +5894,439 @@ function renderAir() {
   });
 }
 
+/* ---- evidence -------------------------------------------------------- */
+
+var EV = { engagement: { client: '', ref: '', operator: '', where: '' },
+           assets: {}, accepted: {}, baseline: null };
+
+function evKey() { return 'ev.' + (S.capture ? S.capture.name : 'none'); }
+function evSave() {
+  try { store(evKey(), JSON.stringify({ engagement: EV.engagement, assets: EV.assets, accepted: EV.accepted })); }
+  catch (e) { dbg('could not keep the evidence notes'); }
+}
+function evLoad() {
+  EV.assets = {}; EV.accepted = {}; EV.baseline = null;
+  EV.engagement = { client: '', ref: '', operator: '', where: '' };
+  var raw = recall(evKey());
+  if (raw) {
+    try {
+      var v = JSON.parse(raw);
+      if (v && typeof v === 'object') {
+        if (v.engagement) ['client', 'ref', 'operator', 'where'].forEach(function (k) {
+          if (typeof v.engagement[k] === 'string') EV.engagement[k] = v.engagement[k].slice(0, 120);
+        });
+        if (v.assets && typeof v.assets === 'object') {
+          Object.keys(v.assets).slice(0, 500).forEach(function (h) {
+            if (typeof v.assets[h] === 'string') EV.assets[h] = v.assets[h].slice(0, 80);
+          });
+        }
+        if (v.accepted && typeof v.accepted === 'object') {
+          Object.keys(v.accepted).slice(0, 500).forEach(function (k) {
+            var a = v.accepted[k];
+            if (a && typeof a === 'object') EV.accepted[k] = { note: String(a.note || '').slice(0, 400), at: a.at || null };
+          });
+        }
+      }
+    } catch (e) { dbg('evidence notes would not parse, starting clean'); }
+  }
+  ['client', 'ref', 'operator', 'where'].forEach(function (k) {
+    var el = $('eng' + k.charAt(0).toUpperCase() + k.slice(1));
+    if (el) el.value = EV.engagement[k];
+  });
+}
+
+/* names get used everywhere a finding mentions an address */
+function assetName(host) { return EV.assets[host] || null; }
+function withNames(text) {
+  if (!text) return text;
+  var keys = Object.keys(EV.assets);
+  if (!keys.length) return text;
+  keys.sort(function (a, b) { return b.length - a.length; });
+  keys.forEach(function (h) {
+    if (!h) return;
+    var parts = text.split(h);
+    if (parts.length > 1) text = parts.join(EV.assets[h] + ' (' + h + ')');
+  });
+  return text;
+}
+function findingKey(f) { return f.tag + '|' + f.title; }
+
+function renderEvidence() {
+  var A = S.all;
+
+  /* assets */
+  var sel = $('assetHost');
+  var chosen = sel.value;
+  clear(sel);
+  (A.hosts || []).slice(0, 400).forEach(function (h) {
+    var o = document.createElement('option');
+    o.value = h.host;
+    o.textContent = h.host + (EV.assets[h.host] ? '  (' + EV.assets[h.host] + ')' : '');
+    sel.appendChild(o);
+  });
+  if (chosen) { var opt = sel.querySelector('option[value="' + chosen + '"]'); if (opt) sel.value = chosen; }
+
+  var at = $('assetTable'), ah = at.querySelector('thead'), ab = at.querySelector('tbody');
+  clear(ah); clear(ab);
+  var htr = el('tr');
+  ['Name', 'Address', 'In this net', ''].forEach(function (c) { htr.appendChild(el('th', null, c)); });
+  ah.appendChild(htr);
+  var names = Object.keys(EV.assets).sort();
+  if (!names.length) {
+    var etr = el('tr'), etd = el('td', null, 'Nothing named yet.');
+    etd.colSpan = 4; etr.appendChild(etd); ab.appendChild(etr);
+  }
+  names.forEach(function (host) {
+    var tr = el('tr');
+    var h = (A.hosts || []).filter(function (x) { return x.host === host; })[0];
+    tr.appendChild(el('td', null, EV.assets[host]));
+    tr.appendChild(el('td', null, host));
+    tr.appendChild(el('td', null, h ? (plural(h.packets, 'packet') + ', ' + DN.bytesHuman(h.bytes)) : 'not in this net'));
+    var td = el('td');
+    var rm = el('button', 'btn', 'Forget');
+    rm.type = 'button';
+    rm.addEventListener('click', function () {
+      delete EV.assets[host];
+      evSave(); renderEvidence(); renderFindings();
+    });
+    td.appendChild(rm);
+    tr.appendChild(td);
+    ab.appendChild(tr);
+  });
+
+  /* carved files */
+  var carved = A.carved || [];
+  $('carveCard').hidden = !carved.length;
+  if (carved.length) {
+    var ct = $('carveTable'), ch = ct.querySelector('thead'), cb = ct.querySelector('tbody');
+    clear(ch); clear(cb);
+    var chtr = el('tr');
+    ['File', 'Looks like', 'Served as', 'Size', 'SHA-256', 'From', ''].forEach(function (c) { chtr.appendChild(el('th', null, c)); });
+    ch.appendChild(chtr);
+    carved.forEach(function (f, i) {
+      var tr = el('tr');
+      tr.appendChild(el('td', null, f.name));
+      var kind = el('td', null, f.sniffedType + (f.complete ? '' : ' (incomplete)'));
+      if (f.executable) kind.style.color = 'var(--alert)';
+      tr.appendChild(kind);
+      var dec = el('td', null, f.declaredType || '');
+      if (f.typeMismatch) dec.style.color = 'var(--warn)';
+      tr.appendChild(dec);
+      tr.appendChild(el('td', null, DN.bytesHuman(f.size)));
+      var hs = el('td', null, f.sha256.slice(0, 24) + '...');
+      hs.title = 'SHA-256 ' + f.sha256 + '\\nMD5 ' + f.md5;
+      tr.appendChild(hs);
+      tr.appendChild(el('td', null, withNames(f.url || f.from || '')));
+      var td = el('td');
+      var b = el('button', 'btn', 'Save');
+      b.type = 'button';
+      b.addEventListener('click', function () { downloadBytes(f.name, f.bytes); });
+      td.appendChild(b);
+      tr.appendChild(td);
+      cb.appendChild(tr);
+    });
+  }
+
+  /* certificates */
+  var certs = [];
+  (A.tls || []).forEach(function (t) {
+    (t.session.certificates || []).forEach(function (c) { certs.push({ c: c, t: t }); });
+  });
+  $('certCard').hidden = !certs.length;
+  if (certs.length) {
+    var list = $('certList');
+    clear(list);
+    var now = A.end || Date.now();
+    certs.forEach(function (x) {
+      var c = x.c, problems = [];
+      if (c.notAfter && c.notAfter < now) problems.push('expired ' + DN.stamp(c.notAfter));
+      if (c.notBefore && c.notBefore > now) problems.push('not valid until ' + DN.stamp(c.notBefore));
+      if (c.weakSignature) problems.push('signed with ' + c.weakSignature);
+      if (c.keyType === 'RSA' && c.keyBits && c.keyBits < 2048) problems.push('RSA key of only ' + c.keyBits + ' bits');
+      var box = el('div', 'cert ' + (problems.length ? 'bad' : 'ok'));
+      box.appendChild(el('h3', null, c.subjectCn || '(no common name)'));
+      var dl = el('dl');
+      function row(k, v) {
+        if (v == null || v === '') return;
+        dl.appendChild(el('dt', null, k));
+        dl.appendChild(el('dd', null, String(v)));
+      }
+      row('Seen talking to', withNames(x.t.to + (x.t.port ? ':' + x.t.port : '')));
+      row('Subject', c.subject);
+      row('Issuer', c.issuer + (c.selfSigned ? '  (self signed)' : ''));
+      row('Valid', (c.notBefore ? DN.stamp(c.notBefore) : '?') + '  to  ' + (c.notAfter ? DN.stamp(c.notAfter) : '?'));
+      row('Key', (c.keyType || '?') + (c.keyBits ? ', ' + c.keyBits + ' bits' : '') + (c.curve ? ', ' + c.curve : ''));
+      row('Signature', c.signatureAlgorithm);
+      row('Also valid for', (c.altNames || []).join(', '));
+      row('Serial', c.serial);
+      row('SHA-256', c.sha256);
+      box.appendChild(dl);
+      if (problems.length) {
+        box.appendChild(el('p', 'bad-note', 'Problems: ' + problems.join('; ') + '.'));
+      }
+      list.appendChild(box);
+    });
+  }
+
+  /* voice */
+  var rtp = (A.rtp || []).filter(function (s) { return s.packets > 2; });
+  $('voiceCard').hidden = !rtp.length;
+  if (rtp.length) {
+    var vt = $('rtpTable'), vh = vt.querySelector('thead'), vb = vt.querySelector('tbody');
+    clear(vh); clear(vb);
+    var vhtr = el('tr');
+    ['From', 'To', 'Codec', 'Packets', 'Lost', 'Length', ''].forEach(function (c) { vhtr.appendChild(el('th', null, c)); });
+    vh.appendChild(vhtr);
+    rtp.forEach(function (st) {
+      var tr = el('tr');
+      tr.appendChild(el('td', null, withNames(st.src) + ':' + st.sport));
+      tr.appendChild(el('td', null, withNames(st.dst) + ':' + st.dport));
+      tr.appendChild(el('td', null, st.codec));
+      tr.appendChild(el('td', null, String(st.packets)));
+      var lost = el('td', null, String(st.lost));
+      if (st.lost) lost.style.color = 'var(--warn)';
+      tr.appendChild(lost);
+      tr.appendChild(el('td', null, DN.secs((st.end - st.start) / 1000)));
+      var td = el('td');
+      if (st.payloadType === 0 || st.payloadType === 8) {
+        var b = el('button', 'btn', 'Save WAV');
+        b.type = 'button';
+        b.addEventListener('click', function () { saveWav(st); });
+        td.appendChild(b);
+      } else td.appendChild(el('span', 'fine', 'not G.711'));
+      tr.appendChild(td);
+      vb.appendChild(tr);
+    });
+  }
+
+  renderBaseline();
+}
+
+function saveWav(st) {
+  var payloads = [];
+  st.payloads.forEach(function (p) {
+    var pk = S.capture.packets.get(p.i);
+    if (pk) payloads.push(pk.bytes.subarray(p.at, p.at + p.len));
+  });
+  if (!payloads.length) return;
+  var wav = DN.rtpToWav(payloads, st.payloadType);
+  downloadBytes(baseName() + '-call-' + st.ssrc.toString(16) + '.wav', wav);
+}
+
+function downloadBytes(name, bytes) {
+  var blob = new Blob([bytes], { type: 'application/octet-stream' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url; a.download = name;
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a);
+  setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+}
+
+/* -- the inventory a session file carries, and the baseline diff ------- */
+function inventory() {
+  var A = S.all;
+  return {
+    hosts: (A.hosts || []).map(function (h) {
+      return { host: h.host, packets: h.packets, bytes: h.bytes, peers: h.peerCount,
+               name: EV.assets[h.host] || null };
+    }),
+    services: (A.ports || []).map(function (p) {
+      return { transport: p.transport, port: p.port, name: p.name || null, packets: p.packets };
+    }),
+    listeners: (A.convs || []).filter(function (c) { return c.transport === 'TCP' && c.synAck; })
+      .map(function (c) { return c.bHost + ':' + c.bPort; })
+      .filter(function (v, i, arr) { return arr.indexOf(v) === i; }),
+    names: (A.dns || []).map(function (d) { return d.name; })
+      .filter(function (v, i, arr) { return v && arr.indexOf(v) === i; }).slice(0, 400),
+    accessPoints: A.wifi ? A.wifi.aps.map(function (ap) {
+      return { bssid: ap.bssid, ssids: ap.ssidList, channel: ap.channel, security: ap.security };
+    }) : []
+  };
+}
+
+function sessionDoc() {
+  var A = S.all, F = S.findings;
+  return {
+    tool: 'DRAGNET', version: DN.VERSION, kind: 'dragnet-session',
+    saved: new Date().toISOString(),
+    engagement: EV.engagement,
+    capture: { name: S.capture.name, format: S.capture.format,
+               packetsInFile: S.capture.packets.length,
+               start: A.start ? new Date(A.start).toISOString() : null,
+               end: A.end ? new Date(A.end).toISOString() : null },
+    assets: EV.assets,
+    accepted: EV.accepted,
+    inventory: inventory(),
+    findings: (F.items || []).map(function (f) {
+      return { severity: f.severity, tag: f.tag, title: f.title,
+               accepted: !!EV.accepted[findingKey(f)],
+               note: EV.accepted[findingKey(f)] ? EV.accepted[findingKey(f)].note : null };
+    }),
+    artifacts: (A.carved || []).map(function (f) {
+      return { name: f.name, type: f.sniffedType, size: f.size, sha256: f.sha256, md5: f.md5, url: f.url };
+    })
+  };
+}
+
+function renderBaseline() {
+  var out = $('baseOut');
+  clear(out);
+  if (!EV.baseline) {
+    out.appendChild(el('p', 'fine', 'No baseline loaded.'));
+    return;
+  }
+  var b = EV.baseline, now = inventory();
+  var head = el('p', 'fine', 'Comparing against ' + (b.capture ? b.capture.name : 'an earlier session') +
+    (b.capture && b.capture.start ? ', captured ' + b.capture.start.slice(0, 16).replace('T', ' ') : '') + '.');
+  head.style.color = 'var(--ink-dim)';
+  out.appendChild(head);
+
+  function diffList(title, before, after, fmt) {
+    var setB = {}, setA = {};
+    before.forEach(function (x) { setB[x] = true; });
+    after.forEach(function (x) { setA[x] = true; });
+    var gained = after.filter(function (x) { return !setB[x]; });
+    var lost = before.filter(function (x) { return !setA[x]; });
+    var wrap = el('div');
+    wrap.appendChild(el('h3', null, title));
+    var p = el('p', 'fine');
+    if (!gained.length && !lost.length) {
+      p.appendChild(el('span', 'diff-same', 'No change. ' + plural(after.length, 'entry') + ' both times.'));
+    } else {
+      if (gained.length) {
+        p.appendChild(el('span', 'diff-new', 'New: ' + gained.slice(0, 20).map(fmt || String).join(', ') +
+          (gained.length > 20 ? ' and ' + (gained.length - 20) + ' more' : '') + '. '));
+      }
+      if (lost.length) {
+        p.appendChild(el('span', 'diff-gone', 'Gone: ' + lost.slice(0, 20).map(fmt || String).join(', ') +
+          (lost.length > 20 ? ' and ' + (lost.length - 20) + ' more' : '') + '.'));
+      }
+    }
+    wrap.appendChild(p);
+    out.appendChild(wrap);
+  }
+
+  var bi = b.inventory || { hosts: [], services: [], listeners: [], accessPoints: [] };
+  diffList('Addresses',
+    (bi.hosts || []).map(function (h) { return h.host; }),
+    now.hosts.map(function (h) { return h.host; }),
+    function (h) { return EV.assets[h] ? EV.assets[h] + ' (' + h + ')' : h; });
+  diffList('Listening services', bi.listeners || [], now.listeners,
+    function (v) {
+      var ip = v.split(':')[0];
+      return EV.assets[ip] ? EV.assets[ip] + ':' + v.split(':')[1] : v;
+    });
+  diffList('Ports in use',
+    (bi.services || []).map(function (s) { return s.transport + '/' + s.port; }),
+    now.services.map(function (s) { return s.transport + '/' + s.port; }));
+  if ((bi.accessPoints && bi.accessPoints.length) || now.accessPoints.length) {
+    diffList('Access points',
+      (bi.accessPoints || []).map(function (a) { return (a.ssids && a.ssids[0] ? a.ssids[0] + ' ' : '') + a.bssid; }),
+      now.accessPoints.map(function (a) { return (a.ssids && a.ssids[0] ? a.ssids[0] + ' ' : '') + a.bssid; }));
+  }
+}
+
+/* -- wiring ------------------------------------------------------------ */
+['client', 'ref', 'operator', 'where'].forEach(function (k) {
+  var elx = $('eng' + k.charAt(0).toUpperCase() + k.slice(1));
+  if (!elx) return;
+  elx.addEventListener('change', function () {
+    EV.engagement[k] = elx.value.slice(0, 120);
+    evSave();
+  });
+});
+
+$('assetSave').addEventListener('click', function () {
+  var host = $('assetHost').value, name = $('assetName').value.trim();
+  if (!host || !name) return;
+  EV.assets[host] = name.slice(0, 80);
+  $('assetName').value = '';
+  evSave();
+  renderEvidence();
+  renderFindings();
+});
+
+$('sessSave').addEventListener('click', function () {
+  download(baseName() + '-dragnet-session.json', JSON.stringify(sessionDoc(), null, 2), 'application/json');
+});
+
+function readSession(file, then) {
+  var rd = new FileReader();
+  rd.onerror = function () { dbg('session file would not read'); };
+  rd.onload = function () {
+    var doc;
+    try { doc = JSON.parse(rd.result); } catch (e) { fatal('That session file is not valid JSON.'); return; }
+    if (!doc || doc.kind !== 'dragnet-session') { fatal('That file is not a Dragnet session.'); return; }
+    then(doc);
+  };
+  rd.readAsText(file);
+}
+
+$('sessIn').addEventListener('change', function (e) {
+  var f = e.target.files[0];
+  if (!f) return;
+  readSession(f, function (doc) {
+    if (doc.engagement) ['client', 'ref', 'operator', 'where'].forEach(function (k) {
+      if (typeof doc.engagement[k] === 'string') {
+        EV.engagement[k] = doc.engagement[k].slice(0, 120);
+        var elx = $('eng' + k.charAt(0).toUpperCase() + k.slice(1));
+        if (elx) elx.value = EV.engagement[k];
+      }
+    });
+    if (doc.assets && typeof doc.assets === 'object') {
+      Object.keys(doc.assets).slice(0, 500).forEach(function (h) {
+        if (typeof doc.assets[h] === 'string') EV.assets[h] = doc.assets[h].slice(0, 80);
+      });
+    }
+    if (doc.accepted && typeof doc.accepted === 'object') {
+      Object.keys(doc.accepted).slice(0, 500).forEach(function (k) {
+        var a = doc.accepted[k];
+        if (a && typeof a === 'object') EV.accepted[k] = { note: String(a.note || '').slice(0, 400), at: a.at || null };
+      });
+    }
+    evSave();
+    renderEvidence();
+    renderFindings();
+  });
+});
+
+$('baseIn').addEventListener('change', function (e) {
+  var f = e.target.files[0];
+  if (!f) return;
+  readSession(f, function (doc) { EV.baseline = doc; renderBaseline(); });
+});
+$('baseClear').addEventListener('click', function () { EV.baseline = null; renderBaseline(); });
+window.DRAGNET_TEST_BASELINE = function (doc) { EV.baseline = doc; renderBaseline(); };
+
+$('expBench').addEventListener('click', function () {
+  var A = S.all, F = S.findings;
+  var doc = {
+    tool: 'DRAGNET', version: DN.VERSION, kind: 'test-bench-evidence',
+    produced: new Date().toISOString(),
+    engagement: EV.engagement,
+    evidence: {
+      type: 'packet capture',
+      capture: S.capture.name,
+      window: { start: A.start ? new Date(A.start).toISOString() : null,
+                end: A.end ? new Date(A.end).toISOString() : null,
+                packets: A.packets, bytes: A.bytes },
+      capturePoint: EV.engagement.where || null
+    },
+    observations: (F.items || []).map(function (f) {
+      var acc = EV.accepted[findingKey(f)];
+      return { severity: f.severity, area: f.tag, statement: withNames(f.title),
+               detail: withNames(f.text), accepted: !!acc, acceptedNote: acc ? acc.note : null };
+    }),
+    assets: Object.keys(EV.assets).map(function (h) { return { address: h, name: EV.assets[h] }; }),
+    artifacts: (A.carved || []).map(function (f) {
+      return { name: f.name, type: f.sniffedType, size: f.size, sha256: f.sha256 };
+    }),
+    note: 'Produced by Dragnet for attachment to a Test Bench run. No payload bytes are included.'
+  };
+  download(baseName() + '-for-test-bench.json', JSON.stringify(doc, null, 2), 'application/json');
+});
+
 /* ---- follow stream --------------------------------------------------- */
 var streamConv = null;
 
@@ -3842,16 +6468,49 @@ function renderFindings() {
   var h = el('h3', null, 'What happened here');
   h.style.cssText = 'font-family:var(--sans);font-size:.78em;letter-spacing:.18em;text-transform:uppercase;color:var(--ink-faint);margin:0 0 8px';
   brief.appendChild(h);
-  F.brief.forEach(function (p) { brief.appendChild(el('p', null, p)); });
+  F.brief.forEach(function (p) { brief.appendChild(el('p', null, withNames(p))); });
 
   var box = $('findings');
   clear(box);
-  F.items.forEach(function (f) {
-    var d = el('div', 'finding sev-' + f.severity);
-    d.appendChild(el('div', 'tagline', f.severity === 'flag' ? 'Look at this' :
-      f.severity === 'watch' ? 'Worth a look' : f.severity === 'good' ? 'Clear' : 'For the record'));
-    d.appendChild(el('h4', null, f.title));
-    d.appendChild(el('p', null, f.text));
+  var items = F.items.slice(0).sort(function (a, b) {
+    var aa = EV.accepted[findingKey(a)] ? 1 : 0, bb = EV.accepted[findingKey(b)] ? 1 : 0;
+    return aa - bb;
+  });
+  items.forEach(function (f) {
+    var key = findingKey(f), acc = EV.accepted[key];
+    var d = el('div', 'finding sev-' + f.severity + (acc ? ' accepted' : ''));
+    d.appendChild(el('div', 'tagline', acc ? 'Accepted' : (f.severity === 'flag' ? 'Look at this' :
+      f.severity === 'watch' ? 'Worth a look' : f.severity === 'good' ? 'Clear' : 'For the record')));
+    d.appendChild(el('h4', null, withNames(f.title)));
+    d.appendChild(el('p', null, withNames(f.text)));
+
+    var bar = el('div', 'finding-foot');
+    if (acc) {
+      var note = el('p', 'accept-note', acc.note ? 'Accepted: ' + acc.note : 'Accepted with no note.');
+      d.appendChild(note);
+      var undo = el('button', 'btn', 'Reopen');
+      undo.type = 'button';
+      undo.addEventListener('click', function () {
+        delete EV.accepted[key];
+        evSave(); renderFindings(); renderEvidence();
+      });
+      bar.appendChild(undo);
+    } else {
+      var row = el('div', 'accept-row');
+      var inp = el('input');
+      inp.type = 'text';
+      inp.placeholder = 'why this is acceptable, or what was done about it';
+      inp.setAttribute('aria-label', 'Note for ' + f.title);
+      var b = el('button', 'btn', 'Accept');
+      b.type = 'button';
+      b.addEventListener('click', function () {
+        EV.accepted[key] = { note: inp.value.trim().slice(0, 400), at: new Date().toISOString() };
+        evSave(); renderFindings(); renderEvidence();
+      });
+      row.appendChild(inp); row.appendChild(b);
+      bar.appendChild(row);
+    }
+    d.appendChild(bar);
     box.appendChild(d);
   });
 }
@@ -3956,7 +6615,45 @@ $('expJson').addEventListener('click', function () {
         return { pair: e[0], messagesSeen: Array.from(e[1]).sort(), complete: e[1].size >= 4 };
       })
     } : null,
-    findings: { brief: F.brief, items: F.items }
+    engagement: EV.engagement,
+    assets: EV.assets,
+    artifacts: (A.carved || []).map(function (f) {
+      return { name: f.name, looksLike: f.sniffedType, servedAs: f.declaredType, size: f.size,
+               sha256: f.sha256, md5: f.md5, url: f.url, complete: f.complete };
+    }),
+    certificates: (function () {
+      var out = [];
+      (A.tls || []).forEach(function (t) {
+        (t.session.certificates || []).forEach(function (c) {
+          out.push({ subject: c.subject, issuer: c.issuer, selfSigned: c.selfSigned,
+                     notBefore: c.notBefore ? new Date(c.notBefore).toISOString() : null,
+                     notAfter: c.notAfter ? new Date(c.notAfter).toISOString() : null,
+                     keyType: c.keyType, keyBits: c.keyBits, signature: c.signatureAlgorithm,
+                     weakSignature: c.weakSignature, altNames: c.altNames || [], sha256: c.sha256,
+                     seenWith: t.to });
+        });
+      });
+      return out;
+    })(),
+    tlsSessions: (A.tls || []).map(function (t) {
+      return { to: t.to, version: t.session.version, cipher: t.session.cipher,
+               weakCipher: t.session.weakCipher,
+               sni: t.session.client ? t.session.client.sni : null,
+               ja3: t.session.client ? t.session.client.ja3 : null,
+               ja3s: t.session.server ? t.session.server.ja3s : null };
+    }),
+    voice: (A.rtp || []).map(function (r) {
+      return { from: r.src + ':' + r.sport, to: r.dst + ':' + r.dport, codec: r.codec,
+               packets: r.packets, lost: r.lost, seconds: (r.end - r.start) / 1000 };
+    }),
+    management: { snmp: A.snmp || [], smb: A.smb || [], ldap: (A.ldap || []).map(function (l) {
+      return { src: l.src, dst: l.dst, operation: l.operation, name: l.name, simpleBind: !!l.simple };
+    }), kerberos: A.kerberos || [], dhcp: A.dhcp || [], quic: A.quic || [] },
+    findings: { brief: F.brief, items: F.items.map(function (f) {
+      var acc = EV.accepted[findingKey(f)];
+      return { severity: f.severity, tag: f.tag, title: f.title, text: f.text,
+               accepted: !!acc, acceptedNote: acc ? acc.note : null };
+    }) }
   };
   download(baseName() + '-dragnet.json', JSON.stringify(doc, null, 2), 'application/json');
 });
@@ -3966,6 +6663,10 @@ $('expTxt').addEventListener('click', function () {
   function rule(ch) { L.push(new Array(72).join(ch || '-')); }
   L.push('DRAGNET CAPTURE REPORT');
   rule('=');
+  if (EV.engagement.client) L.push('Client       : ' + EV.engagement.client);
+  if (EV.engagement.ref) L.push('Engagement   : ' + EV.engagement.ref);
+  if (EV.engagement.operator) L.push('Operator     : ' + EV.engagement.operator);
+  if (EV.engagement.where) L.push('Capture point: ' + EV.engagement.where);
   L.push('Capture      : ' + S.capture.name);
   L.push('Format       : ' + S.capture.format + ', ' + (DN.LINKTYPES[S.capture.linktype] || ('link type ' + S.capture.linktype)));
   L.push('Slice        : ' + (A.start ? DN.stamp(A.start) : 'no time') + '  to  ' + (A.end ? DN.stamp(A.end) : 'no time'));
@@ -3974,12 +6675,13 @@ $('expTxt').addEventListener('click', function () {
   L.push('');
   L.push('WHAT HAPPENED HERE');
   rule();
-  F.brief.forEach(function (p) { L.push(p); L.push(''); });
+  F.brief.forEach(function (p) { L.push(withNames(p)); L.push(''); });
   L.push('FINDINGS');
   rule();
   F.items.forEach(function (f, i) {
-    L.push((i + 1) + '. [' + f.severity.toUpperCase() + '] ' + f.title);
-    L.push('   ' + f.text);
+    var acc = EV.accepted[findingKey(f)];
+    L.push((i + 1) + '. [' + f.severity.toUpperCase() + ']' + (acc ? ' [ACCEPTED]' : '') + ' ' + withNames(f.title));
+    L.push('   ' + withNames(f.text));
     L.push('');
   });
   L.push('TOP CONVERSATIONS');
@@ -3994,7 +6696,8 @@ $('expTxt').addEventListener('click', function () {
   L.push('BUSIEST ADDRESSES');
   rule();
   A.hosts.slice(0, 20).forEach(function (h) {
-    L.push(h.host + '   ' + h.packets + ' pkt, ' + DN.bytesHuman(h.bytes) + ', ' + h.peerCount + ' peers');
+    L.push((EV.assets[h.host] ? EV.assets[h.host] + ' (' + h.host + ')' : h.host) +
+      '   ' + h.packets + ' pkt, ' + DN.bytesHuman(h.bytes) + ', ' + h.peerCount + ' peers');
   });
   L.push('');
   L.push('SERVICES SEEN');
@@ -4003,6 +6706,47 @@ $('expTxt').addEventListener('click', function () {
     L.push(p.transport + '/' + p.port + (p.name ? '  ' + p.name : '') + '   ' + p.packets + ' pkt, ' + DN.bytesHuman(p.bytes));
   });
   L.push('');
+  if (Object.keys(EV.assets).length) {
+    L.push('NAMED ASSETS');
+    rule();
+    Object.keys(EV.assets).sort().forEach(function (h) { L.push(EV.assets[h] + '   ' + h); });
+    L.push('');
+  }
+  if (A.carved && A.carved.length) {
+    L.push('CARVED FILES');
+    rule();
+    A.carved.forEach(function (f) {
+      L.push(f.name + '   ' + f.sniffedType + '   ' + DN.bytesHuman(f.size) +
+        (f.url ? '   from ' + f.url : '') + (f.complete ? '' : '   (incomplete)'));
+      L.push('   SHA-256 ' + f.sha256);
+    });
+    L.push('');
+  }
+  var reportCerts = [];
+  (A.tls || []).forEach(function (t) {
+    (t.session.certificates || []).forEach(function (c) { reportCerts.push({ c: c, t: t }); });
+  });
+  if (reportCerts.length) {
+    L.push('CERTIFICATES');
+    rule();
+    reportCerts.forEach(function (x) {
+      L.push((x.c.subjectCn || '(no common name)') + '   ' + (x.c.keyType || '?') +
+        (x.c.keyBits ? ' ' + x.c.keyBits : '') + '   ' + (x.c.signatureAlgorithm || '') +
+        (x.c.selfSigned ? '   self signed' : ''));
+      L.push('   valid ' + (x.c.notBefore ? DN.stamp(x.c.notBefore) : '?') + ' to ' +
+        (x.c.notAfter ? DN.stamp(x.c.notAfter) : '?') + '   SHA-256 ' + x.c.sha256);
+    });
+    L.push('');
+  }
+  if (A.rtp && A.rtp.length) {
+    L.push('VOICE');
+    rule();
+    A.rtp.forEach(function (r) {
+      L.push(r.src + ':' + r.sport + ' to ' + r.dst + ':' + r.dport + '   ' + r.codec + '   ' +
+        plural(r.packets, 'packet') + ', ' + r.lost + ' lost, ' + DN.secs((r.end - r.start) / 1000));
+    });
+    L.push('');
+  }
   if (A.wifi) {
     L.push('THE AIR');
     rule();
@@ -4036,8 +6780,22 @@ $('expTxt').addEventListener('click', function () {
     }
     L.push('');
   }
+  var acceptedCount = (F.items || []).filter(function (f) { return EV.accepted[findingKey(f)]; }).length;
+  if (acceptedCount) {
+    L.push('ACCEPTED FINDINGS');
+    rule();
+    (F.items || []).forEach(function (f) {
+      var acc = EV.accepted[findingKey(f)];
+      if (!acc) return;
+      L.push('[' + f.severity + '] ' + f.title);
+      L.push('   accepted ' + (acc.at ? acc.at.slice(0, 16).replace('T', ' ') : '') +
+        (acc.note ? ': ' + acc.note : ' with no note'));
+    });
+    L.push('');
+  }
   L.push('Payload bytes are never written into a Dragnet export.');
-  L.push('The Follow stream panel saves payload separately, on purpose and one stream at a time.');
+  L.push('The Follow stream panel and the Evidence station save payload separately, on purpose,');
+  L.push('one stream or one file at a time.');
   L.push('GPL-3.0');
   download(baseName() + '-dragnet-report.txt', L.join('\n'));
 });
@@ -4063,8 +6821,8 @@ $('expCsv').addEventListener('click', function () {
 /* ---- keyboard shortcuts ---------------------------------------------- */
 document.addEventListener('keydown', function (e) {
   if (e.target.matches('input, select, textarea')) return;
-  if (e.key >= '1' && e.key <= '5') {
-    var names = ['catch', 'breakdown', 'ladder', 'findings', 'packets'];
+  if (e.key >= '1' && e.key <= '6') {
+    var names = ['catch', 'breakdown', 'ladder', 'findings', 'packets', 'evidence'];
     if ($('rail').hidden) return;
     selectStation(names[parseInt(e.key, 10) - 1]);
   }
